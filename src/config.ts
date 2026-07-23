@@ -29,6 +29,7 @@ export const config = {
       .filter(Boolean),
     maxFraudScore: Number(process.env.MAX_FRAUD_SCORE ?? 75),
     tokenTtlMs: 24 * 60 * 60 * 1000,
+    sendJoinDm: process.env.SEND_JOIN_DM !== "false",
   },
   invite: {
     ttlSeconds: 60 * 60,

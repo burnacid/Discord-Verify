@@ -1,5 +1,6 @@
 import { GuildMember } from "discord.js";
 import { client } from "../client.js";
+import { config } from "../../config.js";
 import {
   assignVerifiedRole,
   ensureMember,
@@ -19,15 +20,21 @@ client.on("guildMemberAdd", async (member: GuildMember) => {
   if (existing.status === "verified") {
     try {
       await assignVerifiedRole(member.id);
-      await sendDirectMessage(
-        member.id,
-        "Welcome back! You're already verified, so I've restored your Verified role.",
-      );
+      if (config.verification.sendJoinDm) {
+        await sendDirectMessage(
+          member.id,
+          "Welcome back! You're already verified, so I've restored your Verified role.",
+        );
+      }
       return;
     } catch (err) {
       console.error("Failed to restore verified role on rejoin, falling back to re-verification", err);
     }
   }
+
+  // SEND_JOIN_DM=false disables the automatic join DM (and its channel
+  // fallback) entirely — members can still self-serve with /verify.
+  if (!config.verification.sendJoinDm) return;
 
   const token = await issueVerificationToken(member.id);
 

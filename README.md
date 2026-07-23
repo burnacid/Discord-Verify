@@ -13,11 +13,13 @@ queue.
   still fresh, re-minted once it expires). No identity check happens here.
 - On join, the bot DMs the new member a unique `/verify/<token>` link
   (falls back to a message in `DISCORD_START_HERE_CHANNEL_ID` if their DMs
-  are closed). Members can also run the `/verify` slash command at any time
-  to get a fresh link as an ephemeral reply. If a **previously-verified**
-  member rejoins, the bot restores their `Verified` role directly instead
-  of sending them through GeoIP/VPN checks again (falls back to the normal
-  flow only if role restoration fails).
+  are closed). Set `SEND_JOIN_DM=false` to disable this entirely — members
+  can still verify anytime with `/verify`. Members can also run the
+  `/verify` slash command at any time to get a fresh link as an ephemeral
+  reply. If a **previously-verified** member rejoins, the bot restores
+  their `Verified` role directly instead of sending them through GeoIP/VPN
+  checks again (falls back to the normal flow only if role restoration
+  fails).
 - **`GET /verify/:token`** — looks up the token, runs the visitor's IP
   through the GeoIP/VPN provider (cached on the token so page reloads don't
   re-query it), and either:
