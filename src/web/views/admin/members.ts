@@ -46,7 +46,11 @@ export function membersPage(
   query: string,
   results: MemberRow[],
   flash?: string,
+  statusFilter: string | null = null,
 ): string {
+  const showResults = statusFilter !== null || query !== "";
+  const emptyMessage = statusFilter ? `No members with status "${statusFilter}".` : "No matching members found.";
+
   const body = `
     <h1>Members</h1>
     <form method="get" action="/admin/members" style="margin-bottom: 20px;">
@@ -56,10 +60,16 @@ export function membersPage(
     </form>
 
     ${
-      query === ""
+      statusFilter
+        ? `<p class="hint" style="margin-bottom:12px;">Filtering by status: <span class="badge badge-${statusFilter}">${statusFilter}</span> &nbsp;<a href="/admin/members">Clear filter</a></p>`
+        : ""
+    }
+
+    ${
+      !showResults
         ? ""
         : results.length === 0
-          ? `<div class="card empty">No matching members found.</div>`
+          ? `<div class="card empty">${emptyMessage}</div>`
           : `<table>
             <thead>
               <tr><th>Discord ID</th><th>Username</th><th>Status</th><th>Country</th><th>Last IP</th><th>Verified at</th><th></th></tr>

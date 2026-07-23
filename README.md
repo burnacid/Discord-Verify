@@ -118,7 +118,9 @@ at their next login.
 - **Members** (`/admin/members`): search by Discord ID or username (matches
   guild members via Discord's search API), see their status/country/last
   IP/verified-at, and **Verify**/**Unverify** them — the web equivalent of
-  `/verify-user` and `/unverify-user`.
+  `/verify-user` and `/unverify-user`. The dashboard's stat tiles link
+  straight here filtered by status (`?status=verified`, `pending_review`,
+  `rejected`, or `unverified`), capped at the 100 most recent per status.
 - **Settings**: edit the allow-listed countries, max fraud score, and the
   join-DM toggle live, without touching `.env` or restarting. These are now
   stored in the database (`Settings` table) — `.env`'s `ALLOWED_COUNTRIES`,

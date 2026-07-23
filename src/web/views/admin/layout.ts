@@ -61,10 +61,15 @@ export function renderAdminPage(title: string, user: AdminUser, bodyHtml: string
         margin-bottom: 8px;
       }
       .stat {
+        display: block;
         background: #2b2d31;
         border-radius: 8px;
         padding: 16px;
+        text-decoration: none;
+        color: inherit;
+        transition: background-color 0.1s ease;
       }
+      .stat:hover { background: #35373c; }
       .stat .value { font-size: 1.6rem; font-weight: 700; }
       .stat .label { font-size: 0.8rem; color: #b5bac1; margin-top: 4px; }
       table {

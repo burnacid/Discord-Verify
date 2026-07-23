@@ -60,10 +60,10 @@ export function dashboardPage(
   const body = `
     <h1>Dashboard</h1>
     <div class="stats">
-      <div class="stat"><div class="value">${stats.verified}</div><div class="label">Verified</div></div>
-      <div class="stat"><div class="value">${stats.pendingReview}</div><div class="label">Pending review</div></div>
-      <div class="stat"><div class="value">${stats.rejected}</div><div class="label">Rejected</div></div>
-      <div class="stat"><div class="value">${stats.unverified}</div><div class="label">Unverified</div></div>
+      <a class="stat" href="/admin/members?status=verified"><div class="value">${stats.verified}</div><div class="label">Verified</div></a>
+      <a class="stat" href="/admin/members?status=pending_review"><div class="value">${stats.pendingReview}</div><div class="label">Pending review</div></a>
+      <a class="stat" href="/admin/members?status=rejected"><div class="value">${stats.rejected}</div><div class="label">Rejected</div></a>
+      <a class="stat" href="/admin/members?status=unverified"><div class="value">${stats.unverified}</div><div class="label">Unverified</div></a>
     </div>
 
     <h2>Pending review (${pending.length})</h2>
