@@ -24,8 +24,10 @@ async function main() {
   const cleanupInterval = startCleanupJob(CLEANUP_INTERVAL_MS);
 
   const app = createApp();
-  const server = app.listen(config.web.port, () => {
-    console.log(`Web server listening on port ${config.web.port}`);
+  // Bind to localhost only — this app is meant to sit behind a reverse
+  // proxy (Apache/Nginx), never exposed directly on the public interface.
+  const server = app.listen(config.web.port, "127.0.0.1", () => {
+    console.log(`Web server listening on 127.0.0.1:${config.web.port}`);
   });
 
   let shuttingDown = false;
