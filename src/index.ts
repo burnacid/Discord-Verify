@@ -15,11 +15,19 @@ function closeServer(server: Server): Promise<void> {
 }
 
 async function main() {
-  client.once("ready", () => {
+  client.once("clientReady", () => {
     console.log(`Bot logged in as ${client.user?.tag}`);
   });
   await startBot();
-  await registerCommands();
+  try {
+    await registerCommands();
+  } catch (err) {
+    // Don't let a slash-command registration failure (e.g. the bot was
+    // invited without the applications.commands scope) take down the whole
+    // process — DMs, the review queue, and the web server all work fine
+    // without it, so just log and keep going.
+    console.error("Failed to register slash commands, continuing without them", err);
+  }
 
   const cleanupInterval = startCleanupJob(CLEANUP_INTERVAL_MS);
 
