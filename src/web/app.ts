@@ -4,6 +4,10 @@ import { healthRouter } from "./routes/health.js";
 import { joinRouter } from "./routes/join.js";
 import { verifyRouter } from "./routes/verify.js";
 import { requestLogger } from "./requestLogger.js";
+import { sessionMiddleware } from "./admin/session.js";
+import { oauthRouter } from "./admin/oauth.js";
+import { dashboardRouter } from "./admin/dashboardRoutes.js";
+import { membersRouter } from "./admin/membersRoutes.js";
 import { errorPage, notFoundPage } from "./views/verifyPages.js";
 
 export function createApp() {
@@ -14,10 +18,14 @@ export function createApp() {
   app.set("trust proxy", 1);
   app.use(express.urlencoded({ extended: false }));
   app.use(requestLogger);
+  app.use(sessionMiddleware());
 
   app.use(healthRouter);
   app.use(joinRouter);
   app.use(verifyRouter);
+  app.use(oauthRouter);
+  app.use(dashboardRouter);
+  app.use(membersRouter);
 
   app.use((req: Request, res: Response) => {
     if (req.path.startsWith("/join/invite") || req.path === "/health.json") {

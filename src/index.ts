@@ -7,6 +7,8 @@ import "./bot/events/interactionCreate.js";
 import { createApp } from "./web/app.js";
 import { startCleanupJob } from "./jobs/cleanup.js";
 import { prisma } from "./db.js";
+import { initRuntimeSettings } from "./runtimeSettings.js";
+import { registerShutdown } from "./lifecycle.js";
 
 const CLEANUP_INTERVAL_MS = 60 * 60 * 1000;
 
@@ -15,6 +17,8 @@ function closeServer(server: Server): Promise<void> {
 }
 
 async function main() {
+  await initRuntimeSettings();
+
   client.once("clientReady", () => {
     console.log(`Bot logged in as ${client.user?.tag}`);
   });
@@ -55,6 +59,7 @@ async function main() {
 
   process.on("SIGTERM", () => void shutdown("SIGTERM"));
   process.on("SIGINT", () => void shutdown("SIGINT"));
+  registerShutdown(shutdown);
 }
 
 main().catch((err) => {

@@ -1,6 +1,6 @@
 import { Router } from "express";
 import { prisma } from "../../db.js";
-import { config } from "../../config.js";
+import { getRuntimeSettings } from "../../runtimeSettings.js";
 import { geoProvider } from "../../geo/provider.js";
 import { assignVerifiedRole } from "../../bot/verificationService.js";
 import { createReviewEntry } from "../../bot/reviewQueue.js";
@@ -69,8 +69,9 @@ async function ensureGeoCheck(
 }
 
 function isAutoVerified(geo: GeoResult): boolean {
-  const countryAllowed = geo.countryCode !== null && config.verification.allowedCountries.includes(geo.countryCode);
-  const lowRisk = geo.fraudScore <= config.verification.maxFraudScore && !geo.isVpn;
+  const settings = getRuntimeSettings();
+  const countryAllowed = geo.countryCode !== null && settings.allowedCountries.includes(geo.countryCode);
+  const lowRisk = geo.fraudScore <= settings.maxFraudScore && !geo.isVpn;
   return countryAllowed && lowRisk;
 }
 

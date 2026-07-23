@@ -6,18 +6,8 @@ import {
 } from "discord.js";
 import { client } from "../client.js";
 import { config } from "../../config.js";
-import { prisma } from "../../db.js";
-import { postAuditLog } from "../auditLog.js";
-import {
-  assignVerifiedRole,
-  ensureMember,
-  hasVerifiedRole,
-  isAdminMember,
-  issueVerificationToken,
-  kickMember,
-  removeVerifiedRole,
-  sendDirectMessage,
-} from "../verificationService.js";
+import { decideReviewEntry, unverifyMember, verifyMember } from "../adminActions.js";
+import { assignVerifiedRole, ensureMember, hasVerifiedRole, issueVerificationToken } from "../verificationService.js";
 
 client.on("interactionCreate", async (interaction: Interaction) => {
   if (interaction.isChatInputCommand() && interaction.commandName === "verify") {
@@ -92,28 +82,11 @@ async function handleVerifyUserCommand(interaction: ChatInputCommandInteraction)
   const target = interaction.options.getUser("user", true);
   await interaction.deferReply({ flags: MessageFlags.Ephemeral });
 
-  await ensureMember(target.id, interaction.guildId);
-
-  try {
-    await assignVerifiedRole(target.id);
-  } catch (err) {
-    console.error("Failed to assign verified role via /verify-user", err);
-    await interaction.editReply(
-      `Couldn't assign the Verified role to <@${target.id}>. Check the bot's permissions/role position and try again.`,
-    );
+  const result = await verifyMember(target.id, interaction.guildId, interaction.user.id, "/verify-user");
+  if (!result.ok) {
+    await interaction.editReply(result.reason);
     return;
   }
-
-  await prisma.member.update({
-    where: { discordId: target.id },
-    data: { status: "verified", verifiedAt: new Date() },
-  });
-
-  await sendDirectMessage(
-    target.id,
-    "You've been manually verified! You can now post in the server.",
-  );
-  await postAuditLog(`<@${target.id}> was manually **verified** by <@${interaction.user.id}> via /verify-user.`);
 
   await interaction.editReply(`<@${target.id}> has been verified.`);
 }
@@ -130,24 +103,11 @@ async function handleUnverifyUserCommand(interaction: ChatInputCommandInteractio
   const target = interaction.options.getUser("user", true);
   await interaction.deferReply({ flags: MessageFlags.Ephemeral });
 
-  await ensureMember(target.id, interaction.guildId);
-
-  try {
-    await removeVerifiedRole(target.id);
-  } catch (err) {
-    console.error("Failed to remove verified role via /unverify-user", err);
-    await interaction.editReply(
-      `Couldn't remove the Verified role from <@${target.id}>. Check the bot's permissions/role position and try again.`,
-    );
+  const result = await unverifyMember(target.id, interaction.guildId, interaction.user.id, "/unverify-user");
+  if (!result.ok) {
+    await interaction.editReply(result.reason);
     return;
   }
-
-  await prisma.member.update({
-    where: { discordId: target.id },
-    data: { status: "unverified", verifiedAt: null },
-  });
-
-  await postAuditLog(`<@${target.id}> was manually **unverified** by <@${interaction.user.id}> via /unverify-user.`);
 
   await interaction.editReply(`<@${target.id}> has been unverified.`);
 }
@@ -162,84 +122,20 @@ async function handleReviewDecision(
   // so acknowledge immediately and use followUp/editReply for everything after.
   await interaction.deferUpdate();
 
-  const entry = await prisma.reviewQueueEntry.findUnique({ where: { id: entryId } });
-  if (!entry) {
-    await interaction.followUp({ content: "Review entry not found.", flags: MessageFlags.Ephemeral });
+  const result = await decideReviewEntry(entryId, approve, interaction.user.id);
+
+  if (!result.ok) {
+    const message =
+      result.reason === "not_found"
+        ? "Review entry not found."
+        : result.reason === "already_resolved"
+          ? `Already resolved as ${result.entryStatus}.`
+          : result.reason === "role_failed"
+            ? `Approved by <@${interaction.user.id}>, but the role could not be assigned. Check the bot's permissions/role position and try again.`
+            : `Denied by <@${interaction.user.id}>, but I couldn't remove the member from the server. Check the bot's permissions/role position and try again.`;
+
+    await interaction.followUp({ content: message, flags: MessageFlags.Ephemeral });
     return;
-  }
-  if (entry.status !== "pending") {
-    await interaction.followUp({
-      content: `Already resolved as ${entry.status}.`,
-      flags: MessageFlags.Ephemeral,
-    });
-    return;
-  }
-
-  let deniedAdmin = false;
-
-  if (approve) {
-    try {
-      await assignVerifiedRole(entry.discordId);
-    } catch (err) {
-      console.error("Failed to assign verified role from review queue", err);
-      await interaction.followUp({
-        content: `Approved by <@${interaction.user.id}>, but the role could not be assigned. Check the bot's permissions/role position and try again.`,
-        flags: MessageFlags.Ephemeral,
-      });
-      return;
-    }
-  } else {
-    deniedAdmin = await isAdminMember(entry.discordId);
-    if (!deniedAdmin) {
-      await sendDirectMessage(
-        entry.discordId,
-        "Your verification request was denied, and you have been removed from the server.",
-      );
-      try {
-        await kickMember(entry.discordId, "Denied manual verification");
-      } catch (err) {
-        console.error("Failed to kick member after denial", err);
-        await interaction.followUp({
-          content: `Denied by <@${interaction.user.id}>, but I couldn't remove <@${entry.discordId}> from the server. Check the bot's permissions/role position and try again.`,
-          flags: MessageFlags.Ephemeral,
-        });
-        return;
-      }
-    } else {
-      await sendDirectMessage(entry.discordId, "Your verification request was denied.");
-    }
-  }
-
-  await prisma.reviewQueueEntry.update({
-    where: { id: entryId },
-    data: {
-      status: approve ? "approved" : "denied",
-      reviewedBy: interaction.user.id,
-      reviewedAt: new Date(),
-    },
-  });
-
-  await prisma.member.update({
-    where: { discordId: entry.discordId },
-    data: {
-      status: approve ? "verified" : "rejected",
-      verifiedAt: approve ? new Date() : null,
-    },
-  });
-
-  if (approve) {
-    await sendDirectMessage(
-      entry.discordId,
-      "Your verification request was approved! You can now post in the server.",
-    );
-    await postAuditLog(
-      `<@${entry.discordId}> was **approved** by <@${interaction.user.id}> (reason: ${entry.reason}).`,
-    );
-  } else {
-    await postAuditLog(
-      `<@${entry.discordId}> was **denied** by <@${interaction.user.id}> (reason: ${entry.reason})` +
-        `${deniedAdmin ? " — not kicked (admin)" : " and removed from the server"}.`,
-    );
   }
 
   await interaction.deleteReply();

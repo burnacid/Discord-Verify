@@ -91,6 +91,53 @@ Both require the **Manage Roles** permission (Discord enforces this at the
 command level) and work regardless of how the member was previously
 verified — useful for correcting mistakes or handling manual reports.
 
+### Admin web panel
+
+**`GET /admin`** is a browser-based dashboard, gated behind Discord OAuth2
+login. Only accounts with the **Administrator** permission in the guild can
+log in — this is re-checked on every request (via `src/web/admin/session.ts`),
+so a revoked Administrator permission logs someone out immediately, not just
+at their next login.
+
+- **Login**: `/admin` redirects to `/admin/login`, which bounces to Discord's
+  OAuth2 consent screen (`identify` scope only — just enough to know who
+  logged in) and back to `/admin/callback`. No password is stored anywhere;
+  Discord is the only identity provider.
+- **Dashboard**: counts of verified/pending/rejected/unverified members, plus
+  the full pending review queue with **Approve**/**Deny** buttons — a web
+  equivalent of the Discord embed buttons, using the exact same underlying
+  logic (`src/bot/adminActions.ts`) so behavior never diverges between
+  Discord and the web (role assignment, DM, kick-unless-admin, audit log —
+  all identical either way).
+- **Members** (`/admin/members`): search by Discord ID or username (matches
+  guild members via Discord's search API), see their status/country/last
+  IP/verified-at, and **Verify**/**Unverify** them — the web equivalent of
+  `/verify-user` and `/unverify-user`.
+- **Settings**: edit the allow-listed countries, max fraud score, and the
+  join-DM toggle live, without touching `.env` or restarting. These are now
+  stored in the database (`Settings` table) — `.env`'s `ALLOWED_COUNTRIES`,
+  `MAX_FRAUD_SCORE`, and `SEND_JOIN_DM` are only used to seed that row the
+  very first time the app boots against a fresh database.
+- **Restart bot** (dashboard, under "System"): triggers the same graceful
+  shutdown used for `SIGTERM`/`SIGINT` — closes the DB connection and logs
+  the bot out cleanly, then exits and relies on the process manager's
+  auto-restart (PM2's `autorestart`, Passenger, etc.) to bring it back up.
+  Briefly interrupts verification; all admin sessions are lost since they're
+  in-memory (see below) — you'll need to log in again afterward.
+- **Health** nav link opens `/health` (see the Health check section above)
+  in a new tab for a quick status glance without leaving the panel.
+
+Sessions use `express-session` with the default in-memory store — fine for
+this app's single-process deployment, but it means logins don't survive a
+restart (`pm2 restart` etc.) and won't work if you ever scale to multiple
+instances without adding a shared session store.
+
+**Setup requirement**: in the Discord Developer Portal, under your
+application's **OAuth2** tab, add `{PUBLIC_BASE_URL}/admin/callback` (e.g.
+`https://discord.gameforce.nl/admin/callback`) to the **Redirects** list —
+the login flow will fail with a Discord-side error if this doesn't exactly
+match `PUBLIC_BASE_URL` in `.env`.
+
 ## Setup
 
 1. Create a Discord application/bot at https://discord.com/developers, invite
@@ -105,8 +152,14 @@ verified — useful for correcting mistakes or handling manual reports.
    `Verified` can.
 4. Sign up for an [IPQualityScore](https://www.ipqualityscore.com/) API key
    (or swap the provider in `src/geo/provider.ts`).
-5. Copy `.env.example` to `.env` and fill in all values.
-6. Install dependencies and sync the schema:
+5. On the same application's **OAuth2** tab: copy the **Client Secret** (for
+   `DISCORD_CLIENT_SECRET` — needed for the admin panel's login, separate
+   from the bot token), and add `{PUBLIC_BASE_URL}/admin/callback` to the
+   **Redirects** list (e.g. `https://discord.gameforce.nl/admin/callback`
+   in production, `http://localhost:3000/admin/callback` for local dev).
+6. Copy `.env.example` to `.env` and fill in all values, including a random
+   `SESSION_SECRET` (`node -e "console.log(require('crypto').randomBytes(32).toString('hex'))"`).
+7. Install dependencies and sync the schema:
 
    ```bash
    npm install
@@ -121,7 +174,7 @@ verified — useful for correcting mistakes or handling manual reports.
    `CREATE DATABASE` rights, `npx prisma migrate dev --name init` works too
    and gives you tracked migration files.
 
-7. Run locally:
+8. Run locally:
 
    ```bash
    npm run dev
@@ -135,21 +188,28 @@ verified — useful for correcting mistakes or handling manual reports.
    the username/password.
 2. Create the app as a Node.js Application in Virtualmin (Passenger). Point
    the app root at this project, entry point `dist/index.js`.
-3. Build before deploying:
+3. Double-check the Developer Portal's OAuth2 **Redirects** entry matches
+   this server's `PUBLIC_BASE_URL` exactly (e.g. `https://discord.gameforce.nl/admin/callback`)
+   — a mismatch here is the most common cause of admin login failing only in
+   production while working locally.
+4. Build before deploying:
 
    ```bash
    npm run build
    npx prisma db push
    ```
 
-4. Make sure the domain/subdomain used for `PUBLIC_BASE_URL` is served over
+5. Make sure the domain/subdomain used for `PUBLIC_BASE_URL` is served over
    HTTPS (Let's Encrypt via Virtualmin) — verification links are shared
-   over DM and should not be plain HTTP.
-5. The Express app trusts the reverse proxy (`app.set("trust proxy", true)`)
+   over DM and should not be plain HTTP, and admin session cookies require
+   HTTPS to be sent at all (`cookie.secure` is `"auto"` — see Admin web panel
+   section above).
+6. The Express app trusts exactly one reverse-proxy hop (`app.set("trust proxy", 1)`)
    so `req.ip` reflects the real visitor IP for GeoIP/VPN checks — confirm
    Virtualmin's Apache/Nginx front end sets `X-Forwarded-For` (default
-   behavior).
-6. Keep the bot process and web server running as a single process, managed
+   behavior), and that there's exactly one proxy between the internet and
+   this app (adjust the number if you ever add another hop, e.g. a CDN).
+7. Keep the bot process and web server running as a single process, managed
    by PM2 so it auto-restarts on crash or server reboot:
 
    ```bash
@@ -168,10 +228,45 @@ verified — useful for correcting mistakes or handling manual reports.
    support instead of PM2, that works too — Passenger manages the process
    lifecycle itself, so skip the PM2 steps above.
 
+### PM2 command reference
+
+All commands target the app by the name set in `ecosystem.config.cjs`
+(`discord-verify`). Run from anywhere once it's started — PM2 tracks
+processes globally, not per-directory.
+
+| Command | What it does |
+| --- | --- |
+| `pm2 start ecosystem.config.cjs` | Start the app (first time, or after `pm2 delete`) |
+| `pm2 restart discord-verify` | Stop and start again — brief downtime, picks up a new build (`npm run build`) or `.env` changes |
+| `pm2 reload discord-verify` | Graceful restart via the app's `SIGINT` handler; behaves like `restart` here since this runs as a single fork-mode instance, not a cluster |
+| `pm2 stop discord-verify` | Stop the process but keep it in PM2's list (won't survive a reboot until started again) |
+| `pm2 delete discord-verify` | Remove it from PM2 entirely |
+| `pm2 status` | List all PM2-managed processes and their state (online/stopped/errored, restarts, uptime, memory) |
+| `pm2 describe discord-verify` | Detailed info on this one process (script path, restart count, env vars, etc.) |
+| `pm2 logs discord-verify` | Tail logs live (`Ctrl+C` to stop watching) |
+| `pm2 logs discord-verify --lines 200 --nostream` | Dump the last 200 log lines without tailing — useful for pasting into a bug report |
+| `pm2 flush discord-verify` | Clear accumulated log files |
+| `pm2 monit` | Live CPU/memory dashboard for all processes |
+| `pm2 save` | Snapshot the current process list, so `pm2 resurrect` / boot-time startup restores it |
+| `pm2 startup` | Print (and optionally run) the OS-level command to launch PM2 automatically on server reboot |
+| `pm2 unstartup` | Undo `pm2 startup` |
+| `pm2 resurrect` | Restore the process list from the last `pm2 save` |
+
+Typical redeploy after pulling code changes:
+
+```bash
+cd /home/gameforce/domains/discord.gameforce.nl/Discord-Verify
+npm install        # only needed if dependencies changed
+npm run build
+pm2 restart discord-verify
+pm2 logs discord-verify --lines 50 --nostream   # confirm it came back up cleanly
+```
+
 ## Notes / follow-ups
 
-- `ALLOWED_COUNTRIES` and `MAX_FRAUD_SCORE` in `.env` tune the auto-verify
-  threshold; adjust based on observed false positives/negatives in the
-  review queue.
+- Tune the auto-verify threshold (allowed countries, max fraud score) and
+  the join-DM toggle live from `/admin` — no `.env` edits or restarts
+  needed. `ALLOWED_COUNTRIES`/`MAX_FRAUD_SCORE`/`SEND_JOIN_DM` in `.env` only
+  matter once, to seed the database on first boot.
 - The GeoIP/VPN provider is behind `src/geo/provider.ts`'s `GeoProvider`
   interface — swap in a different service without touching route logic.

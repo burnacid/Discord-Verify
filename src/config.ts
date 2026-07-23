@@ -12,6 +12,7 @@ export const config = {
   discord: {
     token: required("DISCORD_TOKEN"),
     clientId: required("DISCORD_CLIENT_ID"),
+    clientSecret: required("DISCORD_CLIENT_SECRET"),
     guildId: required("DISCORD_GUILD_ID"),
     verifiedRoleId: required("DISCORD_VERIFIED_ROLE_ID"),
     startHereChannelId: process.env.DISCORD_START_HERE_CHANNEL_ID ?? null,
@@ -21,15 +22,21 @@ export const config = {
   web: {
     port: Number(process.env.PORT ?? 3000),
     publicBaseUrl: required("PUBLIC_BASE_URL"),
+    sessionSecret: required("SESSION_SECRET"),
   },
-  verification: {
+  // Seed/default values for the DB-backed Settings row (see src/runtimeSettings.ts).
+  // Only used the very first time the app boots against a fresh database —
+  // after that, the admin panel is the source of truth and these are ignored.
+  verificationDefaults: {
     allowedCountries: (process.env.ALLOWED_COUNTRIES ?? "")
       .split(",")
       .map((c) => c.trim().toUpperCase())
       .filter(Boolean),
     maxFraudScore: Number(process.env.MAX_FRAUD_SCORE ?? 75),
-    tokenTtlMs: 24 * 60 * 60 * 1000,
     sendJoinDm: process.env.SEND_JOIN_DM !== "false",
+  },
+  verification: {
+    tokenTtlMs: 24 * 60 * 60 * 1000,
   },
   invite: {
     ttlSeconds: 60 * 60,

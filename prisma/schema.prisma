@@ -69,6 +69,17 @@ model InviteLink {
   @@index([guildId, expiresAt])
 }
 
+// Singleton row (id is always 1) holding runtime-editable settings that
+// were previously env-only. Seeded from .env defaults on first boot if the
+// row doesn't exist yet; edited live from the admin panel afterward.
+model Settings {
+  id               Int      @id @default(1)
+  allowedCountries String
+  maxFraudScore    Int
+  sendJoinDm       Boolean
+  updatedAt        DateTime @updatedAt
+}
+
 model ReviewQueueEntry {
   id         String       @id @default(uuid())
   discordId  String
