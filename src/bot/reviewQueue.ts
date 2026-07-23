@@ -1,0 +1,62 @@
+import {
+  ActionRowBuilder,
+  ButtonBuilder,
+  ButtonStyle,
+  EmbedBuilder,
+} from "discord.js";
+import { client } from "./client.js";
+import { config } from "../config.js";
+import { prisma } from "../db.js";
+import type { IpCheckResult } from "../geo/provider.js";
+
+export interface ReviewSubmission {
+  name: string;
+  email: string;
+}
+
+export async function createReviewEntry(
+  discordId: string,
+  reason: "vpn" | "country",
+  ipCheck: IpCheckResult,
+  submission: ReviewSubmission,
+): Promise<void> {
+  const entry = await prisma.reviewQueueEntry.create({
+    data: {
+      discordId,
+      reason,
+      ipInfo: ipCheck.raw as object,
+      name: submission.name,
+      email: submission.email,
+    },
+  });
+
+  if (!config.discord.modReviewChannelId) return;
+  const channel = await client.channels.fetch(config.discord.modReviewChannelId);
+  if (!channel?.isTextBased() || channel.isThread() || channel.isDMBased()) return;
+
+  const embed = new EmbedBuilder()
+    .setTitle("Verification review requested")
+    .addFields(
+      { name: "User", value: `<@${discordId}>`, inline: true },
+      { name: "Reason", value: reason, inline: true },
+      { name: "Country", value: ipCheck.countryCode ?? "unknown", inline: true },
+      { name: "Fraud score", value: String(ipCheck.fraudScore), inline: true },
+      { name: "Name", value: submission.name, inline: true },
+      { name: "Email", value: submission.email, inline: true },
+    )
+    .setColor(0xf5a623)
+    .setTimestamp();
+
+  const row = new ActionRowBuilder<ButtonBuilder>().addComponents(
+    new ButtonBuilder()
+      .setCustomId(`review_approve:${entry.id}`)
+      .setLabel("Approve")
+      .setStyle(ButtonStyle.Success),
+    new ButtonBuilder()
+      .setCustomId(`review_deny:${entry.id}`)
+      .setLabel("Deny")
+      .setStyle(ButtonStyle.Danger),
+  );
+
+  await channel.send({ embeds: [embed], components: [row] });
+}

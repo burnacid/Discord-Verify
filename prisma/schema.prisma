@@ -1,0 +1,85 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "mysql"
+  url      = env("DATABASE_URL")
+}
+
+enum MemberStatus {
+  unverified
+  verified
+  pending_review
+  rejected
+}
+
+enum ReviewReason {
+  vpn
+  country
+}
+
+enum ReviewStatus {
+  pending
+  approved
+  denied
+}
+
+model Member {
+  discordId   String       @id
+  guildId     String
+  status      MemberStatus @default(unverified)
+  country     String?
+  ipRiskScore Int?
+  verifiedAt  DateTime?
+  createdAt   DateTime     @default(now())
+
+  tokens      VerificationToken[]
+  reviewQueue ReviewQueueEntry[]
+}
+
+model VerificationToken {
+  token     String    @id @default(uuid())
+  discordId String
+  member    Member    @relation(fields: [discordId], references: [discordId])
+  expiresAt DateTime
+  usedAt    DateTime?
+  createdAt DateTime  @default(now())
+
+  // Cached GeoIP/VPN check result, filled in on first page load so page
+  // reloads (e.g. while filling out the manual-review form) don't re-query
+  // the provider or risk getting a different result mid-flow.
+  geoCountry    String?
+  geoFraudScore Int?
+  geoIsVpn      Boolean?
+  geoRaw        Json?
+  geoCheckedAt  DateTime?
+
+  @@index([discordId])
+}
+
+model InviteLink {
+  code      String   @id
+  guildId   String
+  createdAt DateTime @default(now())
+  expiresAt DateTime
+
+  @@index([guildId, expiresAt])
+}
+
+model ReviewQueueEntry {
+  id         String       @id @default(uuid())
+  discordId  String
+  member     Member       @relation(fields: [discordId], references: [discordId])
+  reason     ReviewReason
+  ipInfo     Json
+  name       String       @default("")
+  email      String       @default("")
+  status     ReviewStatus @default(pending)
+  reviewedBy String?
+  reviewedAt DateTime?
+  createdAt  DateTime     @default(now())
+
+  @@index([discordId])
+  @@index([status])
+}
