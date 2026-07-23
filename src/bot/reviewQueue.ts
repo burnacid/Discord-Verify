@@ -17,6 +17,7 @@ export interface ReviewSubmission {
 export async function createReviewEntry(
   discordId: string,
   reason: "vpn" | "country",
+  ip: string,
   ipCheck: IpCheckResult,
   submission: ReviewSubmission,
 ): Promise<void> {
@@ -39,6 +40,7 @@ export async function createReviewEntry(
     .addFields(
       { name: "User", value: `<@${discordId}>`, inline: true },
       { name: "Reason", value: reason, inline: true },
+      { name: "IP", value: ip, inline: true },
       { name: "Country", value: ipCheck.countryCode ?? "unknown", inline: true },
       { name: "Fraud score", value: String(ipCheck.fraudScore), inline: true },
       { name: "Name", value: submission.name, inline: true },

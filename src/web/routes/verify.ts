@@ -38,6 +38,7 @@ async function ensureGeoCheck(
   await prisma.verificationToken.update({
     where: { token },
     data: {
+      geoIp: ip,
       geoCountry: result.countryCode,
       geoFraudScore: result.fraudScore,
       geoIsVpn: result.isVpn,
@@ -98,7 +99,7 @@ verifyRouter.get("/verify/:token", verifyLimiter, asyncHandler(async (req, res) 
 
   await prisma.member.update({
     where: { discordId: record.discordId },
-    data: { country: geo.countryCode, ipRiskScore: geo.fraudScore },
+    data: { country: geo.countryCode, ipRiskScore: geo.fraudScore, lastIp: ip },
   });
 
   if (isAutoVerified(geo)) {
@@ -141,7 +142,7 @@ verifyRouter.post("/verify/:token", verifyLimiter, asyncHandler(async (req, res)
     res.status(410).send(errorPage("Link expired", "This verification link has expired."));
     return;
   }
-  if (!record.geoCheckedAt) {
+  if (!record.geoCheckedAt || !record.geoIp) {
     res
       .status(400)
       .send(errorPage("Something went wrong", "Please reopen your verification link and try again."));
@@ -176,7 +177,7 @@ verifyRouter.post("/verify/:token", verifyLimiter, asyncHandler(async (req, res)
     where: { discordId: record.discordId },
     data: { status: "pending_review" },
   });
-  await createReviewEntry(record.discordId, geo.isVpn ? "vpn" : "country", geo, { name, email });
+  await createReviewEntry(record.discordId, geo.isVpn ? "vpn" : "country", record.geoIp, geo, { name, email });
 
   res.send(reviewSubmittedPage());
 }));

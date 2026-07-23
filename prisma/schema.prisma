@@ -31,6 +31,7 @@ model Member {
   status      MemberStatus @default(unverified)
   country     String?
   ipRiskScore Int?
+  lastIp      String?
   verifiedAt  DateTime?
   createdAt   DateTime     @default(now())
 
@@ -49,6 +50,7 @@ model VerificationToken {
   // Cached GeoIP/VPN check result, filled in on first page load so page
   // reloads (e.g. while filling out the manual-review form) don't re-query
   // the provider or risk getting a different result mid-flow.
+  geoIp         String?
   geoCountry    String?
   geoFraudScore Int?
   geoIsVpn      Boolean?

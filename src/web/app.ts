@@ -3,6 +3,7 @@ import type { NextFunction, Request, Response } from "express";
 import { healthRouter } from "./routes/health.js";
 import { joinRouter } from "./routes/join.js";
 import { verifyRouter } from "./routes/verify.js";
+import { requestLogger } from "./requestLogger.js";
 import { errorPage, notFoundPage } from "./views/verifyPages.js";
 
 export function createApp() {
@@ -10,6 +11,7 @@ export function createApp() {
   // Required so req.ip reflects the real client IP behind Virtualmin's Apache/Nginx reverse proxy.
   app.set("trust proxy", true);
   app.use(express.urlencoded({ extended: false }));
+  app.use(requestLogger);
 
   app.use(healthRouter);
   app.use(joinRouter);
