@@ -6,7 +6,8 @@
       "Bash(npx prisma *)",
       "Bash(npx tsc *)",
       "Bash(npm run *)",
-      "Bash(tasklist //FI \"IMAGENAME eq node.exe\")"
+      "Bash(tasklist //FI \"IMAGENAME eq node.exe\")",
+      "WebFetch(domain:ipapi.co)"
     ]
   }
 }

@@ -8,8 +8,10 @@ import { errorPage, notFoundPage } from "./views/verifyPages.js";
 
 export function createApp() {
   const app = express();
-  // Required so req.ip reflects the real client IP behind Virtualmin's Apache/Nginx reverse proxy.
-  app.set("trust proxy", true);
+  // Trust exactly one hop (the Virtualmin Apache/Nginx reverse proxy in front of this app),
+  // not the whole X-Forwarded-For chain — trusting all hops would let a client spoof req.ip
+  // by sending their own X-Forwarded-For header, undermining both rate limiting and GeoIP checks.
+  app.set("trust proxy", 1);
   app.use(express.urlencoded({ extended: false }));
   app.use(requestLogger);
 
