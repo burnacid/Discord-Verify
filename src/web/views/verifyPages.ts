@@ -43,9 +43,10 @@ export function successPage(): string {
 export interface ReviewFormErrors {
   name?: string;
   email?: string;
+  captcha?: string;
 }
 
-export function reviewFormPage(reasonMessage: string, errors: ReviewFormErrors = {}): string {
+export function reviewFormPage(reasonMessage: string, turnstileSiteKey: string, errors: ReviewFormErrors = {}): string {
   return renderPage(
     "Manual verification needed",
     `<div class="icon pending">!</div>
@@ -58,8 +59,11 @@ export function reviewFormPage(reasonMessage: string, errors: ReviewFormErrors =
        <label for="email">Email</label>
        <input type="email" id="email" name="email" required maxlength="200" />
        ${errors.email ? `<div class="field-error">${errors.email}</div>` : ""}
+       <div class="cf-turnstile" data-sitekey="${turnstileSiteKey}" style="margin-top:16px;"></div>
+       ${errors.captcha ? `<div class="field-error">${errors.captcha}</div>` : ""}
        <button type="submit">Submit for review</button>
      </form>`,
+    `<script src="https://challenges.cloudflare.com/turnstile/v0/api.js" async defer></script>`,
   );
 }
 

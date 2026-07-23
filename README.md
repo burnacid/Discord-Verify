@@ -16,19 +16,25 @@ queue.
   are closed). Set `SEND_JOIN_DM=false` to disable this entirely — members
   can still verify anytime with `/verify`. Members can also run the
   `/verify` slash command at any time to get a fresh link as an ephemeral
-  reply. If a **previously-verified** member rejoins, the bot restores
-  their `Verified` role directly instead of sending them through GeoIP/VPN
-  checks again (falls back to the normal flow only if role restoration
-  fails).
+  reply, or simply **DM the bot directly** (any message works) for the same
+  result — handy if `/verify` isn't visible due to a channel permission
+  override, since DMs bypass that entirely. Non-members who DM the bot get
+  pointed to `/join` instead. If a **previously-verified** member rejoins,
+  the bot restores their `Verified` role directly instead of sending them
+  through GeoIP/VPN checks again (falls back to the normal flow only if
+  role restoration fails).
 - **`GET /verify/:token`** — looks up the token, runs the visitor's IP
   through the GeoIP/VPN provider (cached on the token so page reloads don't
   re-query it), and either:
   - auto-assigns the `Verified` Discord role (allow-listed country + low
     fraud/VPN risk) and shows a success page, or
-  - shows a form asking for **name and email**. Submitting it
-    (`POST /verify/:token`) creates a review-queue entry — including that
+  - shows a form asking for **name, email, and a Cloudflare Turnstile
+    CAPTCHA**. Submitting it (`POST /verify/:token`) verifies the CAPTCHA
+    server-side, then creates a review-queue entry — including that
     name/email — and posts an embed with Approve/Deny buttons in
-    `DISCORD_MOD_REVIEW_CHANNEL_ID`.
+    `DISCORD_MOD_REVIEW_CHANNEL_ID`. The CAPTCHA guards this specific step
+    against scripted submissions flooding the review queue with fake
+    name/email pairs; the auto-verify path above never shows one.
 - **Review decisions**: approving a review-queue entry DMs the member and
   assigns the `Verified` role. Denying it DMs the member and **kicks them
   from the server**, unless they have the **Administrator** permission (in
@@ -152,14 +158,17 @@ match `PUBLIC_BASE_URL` in `.env`.
    `Verified` can.
 4. Sign up for an [IPQualityScore](https://www.ipqualityscore.com/) API key
    (or swap the provider in `src/geo/provider.ts`).
-5. On the same application's **OAuth2** tab: copy the **Client Secret** (for
-   `DISCORD_CLIENT_SECRET` — needed for the admin panel's login, separate
-   from the bot token), and add `{PUBLIC_BASE_URL}/admin/callback` to the
-   **Redirects** list (e.g. `https://discord.gameforce.nl/admin/callback`
+5. Add a site in the [Cloudflare Turnstile dashboard](https://dash.cloudflare.com/)
+   (the domain doesn't need to already use Cloudflare) to get
+   `TURNSTILE_SITE_KEY` and `TURNSTILE_SECRET_KEY`.
+6. On the same Discord application's **OAuth2** tab: copy the **Client Secret**
+   (for `DISCORD_CLIENT_SECRET` — needed for the admin panel's login,
+   separate from the bot token), and add `{PUBLIC_BASE_URL}/admin/callback`
+   to the **Redirects** list (e.g. `https://discord.gameforce.nl/admin/callback`
    in production, `http://localhost:3000/admin/callback` for local dev).
-6. Copy `.env.example` to `.env` and fill in all values, including a random
+7. Copy `.env.example` to `.env` and fill in all values, including a random
    `SESSION_SECRET` (`node -e "console.log(require('crypto').randomBytes(32).toString('hex'))"`).
-7. Install dependencies and sync the schema:
+8. Install dependencies and sync the schema:
 
    ```bash
    npm install
@@ -174,7 +183,7 @@ match `PUBLIC_BASE_URL` in `.env`.
    `CREATE DATABASE` rights, `npx prisma migrate dev --name init` works too
    and gives you tracked migration files.
 
-8. Run locally:
+9. Run locally:
 
    ```bash
    npm run dev

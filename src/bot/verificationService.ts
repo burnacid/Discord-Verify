@@ -24,6 +24,37 @@ export async function issueVerificationToken(discordId: string): Promise<string>
   return token;
 }
 
+/**
+ * Shared self-service reply logic behind /verify and DMing the bot directly:
+ * already verified (self-heals a missing role), pending review, or a fresh
+ * verification link.
+ */
+export async function getVerifyStatusMessage(discordId: string, guildId: string): Promise<string> {
+  const member = await ensureMember(discordId, guildId);
+
+  if (member.status === "verified") {
+    if (await hasVerifiedRole(discordId)) {
+      return "You're already verified.";
+    }
+    // DB says verified but the role is missing (e.g. a prior role assignment failed) — retry.
+    try {
+      await assignVerifiedRole(discordId);
+      return "You're verified! The Verified role has been re-applied.";
+    } catch (err) {
+      console.error("Failed to re-apply verified role", err);
+      return "You're marked as verified, but I couldn't apply the role. Please contact a moderator.";
+    }
+  }
+
+  if (member.status === "pending_review") {
+    return "Your verification is already pending moderator review.";
+  }
+
+  const token = await issueVerificationToken(discordId);
+  const link = `${config.web.publicBaseUrl}/verify/${token}`;
+  return `Verify here (link expires in 24 hours): ${link}`;
+}
+
 export async function sendDirectMessage(discordId: string, message: string): Promise<boolean> {
   try {
     const user = await client.users.fetch(discordId);

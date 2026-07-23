@@ -4,6 +4,7 @@ import { client, startBot } from "./bot/client.js";
 import { registerCommands } from "./bot/commands.js";
 import "./bot/events/guildMemberAdd.js";
 import "./bot/events/interactionCreate.js";
+import "./bot/events/messageCreate.js";
 import { createApp } from "./web/app.js";
 import { startCleanupJob } from "./jobs/cleanup.js";
 import { prisma } from "./db.js";

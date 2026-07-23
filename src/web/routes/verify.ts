@@ -1,7 +1,9 @@
 import { Router } from "express";
 import { prisma } from "../../db.js";
+import { config } from "../../config.js";
 import { getRuntimeSettings } from "../../runtimeSettings.js";
 import { geoProvider } from "../../geo/provider.js";
+import { verifyTurnstileToken } from "../../captcha/turnstile.js";
 import { assignVerifiedRole } from "../../bot/verificationService.js";
 import { createReviewEntry } from "../../bot/reviewQueue.js";
 import { asyncHandler } from "../asyncHandler.js";
@@ -146,7 +148,7 @@ verifyRouter.get("/verify/:token", verifyLimiter, asyncHandler(async (req, res) 
     return;
   }
 
-  res.send(reviewFormPage(reasonMessage(geo)));
+  res.send(reviewFormPage(reasonMessage(geo), config.captcha.siteKey));
 }));
 
 verifyRouter.post("/verify/:token", verifyLimiter, asyncHandler(async (req, res) => {
@@ -183,6 +185,7 @@ verifyRouter.post("/verify/:token", verifyLimiter, asyncHandler(async (req, res)
 
   const name = typeof req.body?.name === "string" ? req.body.name.trim() : "";
   const email = typeof req.body?.email === "string" ? req.body.email.trim() : "";
+  const captchaToken: string = typeof req.body?.["cf-turnstile-response"] === "string" ? req.body["cf-turnstile-response"] : "";
 
   const errors: ReviewFormErrors = {};
   if (!name || name.length > 100) {
@@ -191,9 +194,14 @@ verifyRouter.post("/verify/:token", verifyLimiter, asyncHandler(async (req, res)
   if (!email || email.length > 200 || !EMAIL_RE.test(email)) {
     errors.email = "Please enter a valid email address.";
   }
+  if (!captchaToken) {
+    errors.captcha = "Please complete the verification challenge.";
+  } else if (!(await verifyTurnstileToken(captchaToken, req.ip ?? ""))) {
+    errors.captcha = "Verification challenge failed. Please try again.";
+  }
 
-  if (errors.name || errors.email) {
-    res.status(400).send(reviewFormPage(reasonMessage(geo), errors));
+  if (errors.name || errors.email || errors.captcha) {
+    res.status(400).send(reviewFormPage(reasonMessage(geo), config.captcha.siteKey, errors));
     return;
   }
 

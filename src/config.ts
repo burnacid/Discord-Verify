@@ -41,4 +41,8 @@ export const config = {
   invite: {
     ttlSeconds: 60 * 60,
   },
+  captcha: {
+    siteKey: required("TURNSTILE_SITE_KEY"),
+    secretKey: required("TURNSTILE_SECRET_KEY"),
+  },
 } as const;

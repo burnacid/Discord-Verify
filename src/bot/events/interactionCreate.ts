@@ -5,9 +5,8 @@ import {
   MessageFlags,
 } from "discord.js";
 import { client } from "../client.js";
-import { config } from "../../config.js";
 import { decideReviewEntry, unverifyMember, verifyMember } from "../adminActions.js";
-import { assignVerifiedRole, ensureMember, hasVerifiedRole, issueVerificationToken } from "../verificationService.js";
+import { getVerifyStatusMessage } from "../verificationService.js";
 
 client.on("interactionCreate", async (interaction: Interaction) => {
   if (interaction.isChatInputCommand() && interaction.commandName === "verify") {
@@ -42,32 +41,8 @@ async function handleVerifyCommand(interaction: ChatInputCommandInteraction): Pr
 
   await interaction.deferReply({ flags: MessageFlags.Ephemeral });
 
-  const member = await ensureMember(interaction.user.id, interaction.guildId);
-  if (member.status === "verified") {
-    if (await hasVerifiedRole(interaction.user.id)) {
-      await interaction.editReply("You're already verified.");
-      return;
-    }
-    // DB says verified but the role is missing (e.g. a prior role assignment failed) — retry.
-    try {
-      await assignVerifiedRole(interaction.user.id);
-      await interaction.editReply("You're verified! The Verified role has been re-applied.");
-    } catch (err) {
-      console.error("Failed to re-apply verified role", err);
-      await interaction.editReply(
-        "You're marked as verified, but I couldn't apply the role. Please contact a moderator.",
-      );
-    }
-    return;
-  }
-  if (member.status === "pending_review") {
-    await interaction.editReply("Your verification is already pending moderator review.");
-    return;
-  }
-
-  const token = await issueVerificationToken(interaction.user.id);
-  const link = `${config.web.publicBaseUrl}/verify/${token}`;
-  await interaction.editReply(`Verify here (link expires in 24 hours): ${link}`);
+  const message = await getVerifyStatusMessage(interaction.user.id, interaction.guildId);
+  await interaction.editReply(message);
 }
 
 async function handleVerifyUserCommand(interaction: ChatInputCommandInteraction): Promise<void> {
