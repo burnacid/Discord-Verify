@@ -6,12 +6,31 @@ import { assignVerifiedRole } from "../../bot/verificationService.js";
 import { createReviewEntry } from "../../bot/reviewQueue.js";
 import { asyncHandler } from "../asyncHandler.js";
 import { verifyLimiter } from "../rateLimit.js";
-import { errorPage, reviewFormPage, reviewSubmittedPage, successPage } from "../views/verifyPages.js";
+import {
+  errorPage,
+  linkPreviewPage,
+  reviewFormPage,
+  reviewSubmittedPage,
+  successPage,
+} from "../views/verifyPages.js";
 import type { ReviewFormErrors } from "../views/verifyPages.js";
 
 export const verifyRouter = Router();
 
 const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+
+// Discord (and other chat apps) pre-fetch links to build a message embed the
+// instant the DM is sent — before the human ever opens it. If we ran the
+// GeoIP/VPN check for that request, its result would get cached on the
+// token (see ensureGeoCheck) and the real visitor's later request would
+// read back the crawler's IP-based result instead of their own. Detect
+// known link-preview bots and skip all DB/geo work for them entirely.
+const LINK_PREVIEW_BOT_RE =
+  /discordbot|slackbot|telegrambot|whatsapp|facebookexternalhit|twitterbot|linkedinbot|embedly|google-inspectiontool/i;
+
+function isLinkPreviewBot(userAgent: string | undefined): boolean {
+  return !!userAgent && LINK_PREVIEW_BOT_RE.test(userAgent);
+}
 
 interface GeoResult {
   countryCode: string | null;
@@ -62,6 +81,11 @@ function reasonMessage(geo: GeoResult): string {
 }
 
 verifyRouter.get("/verify/:token", verifyLimiter, asyncHandler(async (req, res) => {
+  if (isLinkPreviewBot(req.headers["user-agent"])) {
+    res.send(linkPreviewPage());
+    return;
+  }
+
   const { token } = req.params;
 
   const record = await prisma.verificationToken.findUnique({ where: { token } });

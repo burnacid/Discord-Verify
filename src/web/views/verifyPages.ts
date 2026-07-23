@@ -9,6 +9,18 @@ export function errorPage(title: string, message: string): string {
   );
 }
 
+export function linkPreviewPage(): string {
+  return renderPage(
+    "Discord Verification",
+    `<div class="icon pending">&#128274;</div>
+     <h1>Discord Verification</h1>
+     <p>Open this link in Discord or your browser to verify your account.</p>`,
+    `<meta property="og:title" content="Discord Verification" />
+     <meta property="og:description" content="Open this link to verify your account." />
+     <meta name="robots" content="noindex, nofollow" />`,
+  );
+}
+
 export function notFoundPage(): string {
   return renderPage(
     "Page not found",

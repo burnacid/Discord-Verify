@@ -1,10 +1,11 @@
-export function renderPage(title: string, bodyHtml: string): string {
+export function renderPage(title: string, bodyHtml: string, extraHead = ""): string {
   return `<!doctype html>
 <html lang="en">
   <head>
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <title>${title}</title>
+    ${extraHead}
     <style>
       :root { color-scheme: dark; }
       * { box-sizing: border-box; }
