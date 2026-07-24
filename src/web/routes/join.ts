@@ -9,6 +9,10 @@ const joinPagePath = path.join(__dirname, "..", "public", "join.html");
 
 export const joinRouter = Router();
 
+joinRouter.get("/", (_req, res) => {
+  res.redirect(302, "/join");
+});
+
 joinRouter.get("/join", (_req, res) => {
   res.sendFile(joinPagePath);
 });
