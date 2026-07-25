@@ -1,3 +1,5 @@
+import { adminModules } from "../../admin/moduleRegistry.js";
+
 export interface AdminUser {
   discordId: string;
   username: string;
@@ -119,7 +121,7 @@ export function renderAdminPage(title: string, user: AdminUser, bodyHtml: string
         margin: 14px 0 6px;
       }
       label:first-child { margin-top: 0; }
-      input[type="text"], input[type="number"], input[type="search"] {
+      input[type="text"], input[type="number"], input[type="search"], select {
         width: 100%;
         max-width: 400px;
         padding: 8px 12px;
@@ -129,7 +131,20 @@ export function renderAdminPage(title: string, user: AdminUser, bodyHtml: string
         color: #f2f3f5;
         font-size: 0.9rem;
       }
-      input:focus { outline: none; border-color: #5865f2; }
+      input:focus, select:focus, textarea:focus { outline: none; border-color: #5865f2; }
+      textarea {
+        width: 100%;
+        max-width: 500px;
+        min-height: 90px;
+        padding: 8px 12px;
+        border-radius: 6px;
+        border: 1px solid #1e1f22;
+        background: #1e1f22;
+        color: #f2f3f5;
+        font-size: 0.9rem;
+        font-family: inherit;
+        resize: vertical;
+      }
       .checkbox-row { display: flex; align-items: center; gap: 8px; margin-top: 14px; }
       .checkbox-row label { margin: 0; text-transform: none; font-size: 0.9rem; font-weight: 400; color: #f2f3f5; }
       .hint { font-size: 0.78rem; color: #80848e; margin-top: 4px; }
@@ -153,6 +168,7 @@ export function renderAdminPage(title: string, user: AdminUser, bodyHtml: string
       <nav>
         <a href="/admin">Dashboard</a>
         <a href="/admin/members">Members</a>
+        ${adminModules.map((m) => `<a href="${m.navPath}">${m.label}</a>`).join("")}
         <a href="/health" target="_blank" rel="noopener">Health</a>
         <span class="user">${user.username}</span>
         <a href="/admin/logout">Log out</a>

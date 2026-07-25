@@ -8,6 +8,8 @@ import { sessionMiddleware } from "./admin/session.js";
 import { oauthRouter } from "./admin/oauth.js";
 import { dashboardRouter } from "./admin/dashboardRoutes.js";
 import { membersRouter } from "./admin/membersRoutes.js";
+import "./admin/modules.js";
+import { adminModules } from "./admin/moduleRegistry.js";
 import { errorPage, notFoundPage } from "./views/verifyPages.js";
 
 export function createApp() {
@@ -26,6 +28,7 @@ export function createApp() {
   app.use(oauthRouter);
   app.use(dashboardRouter);
   app.use(membersRouter);
+  for (const mod of adminModules) app.use(mod.router);
 
   app.use((req: Request, res: Response) => {
     if (req.path.startsWith("/join/invite") || req.path === "/health.json") {

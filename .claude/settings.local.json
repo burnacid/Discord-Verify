@@ -7,7 +7,9 @@
       "Bash(npx tsc *)",
       "Bash(npm run *)",
       "Bash(tasklist //FI \"IMAGENAME eq node.exe\")",
-      "WebFetch(domain:ipapi.co)"
+      "WebFetch(domain:ipapi.co)",
+      "Bash(tasklist)",
+      "Bash(echo \"exit code: $?\")"
     ]
   }
 }

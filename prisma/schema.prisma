@@ -80,6 +80,46 @@ model Settings {
   updatedAt        DateTime @updatedAt
 }
 
+model RssFeed {
+  id           String    @id @default(uuid())
+  name         String
+  feedUrl      String
+  channelId    String
+  enabled      Boolean   @default(true)
+  template     String?
+  lastGuid     String?
+  lastPostedAt DateTime?
+  createdAt    DateTime  @default(now())
+  updatedAt    DateTime  @updatedAt
+}
+
+// Singleton row (id always 1) holding the default RSS post template used by
+// feeds that don't set their own — same pattern as the Settings model, but
+// scoped to the RSS module rather than mixed into the main Settings table.
+model RssSettings {
+  id              Int      @id @default(1)
+  defaultTemplate String
+  updatedAt       DateTime @updatedAt
+}
+
+model JtcTrigger {
+  id        String   @id @default(uuid())
+  channelId String   @unique
+  name      String
+  createdAt DateTime @default(now())
+}
+
+// No relation/cascade to JtcTrigger on purpose: deleting a trigger must not
+// touch channels it already spawned — they still need to be tracked here
+// until they empty out and get cleaned up normally.
+model JtcChannel {
+  id        String   @id @default(uuid())
+  channelId String   @unique
+  triggerId String
+  number    Int
+  createdAt DateTime @default(now())
+}
+
 model ReviewQueueEntry {
   id         String       @id @default(uuid())
   discordId  String
