@@ -1,5 +1,5 @@
 import { renderAdminPage } from "./layout.js";
-import type { AdminUser } from "./layout.js";
+import type { AdminUser, FlashKind } from "./layout.js";
 import type { RuntimeSettings } from "../../../runtimeSettings.js";
 
 export interface DashboardStats {
@@ -56,6 +56,7 @@ export function dashboardPage(
   pending: PendingReviewRow[],
   settings: RuntimeSettings,
   flash?: string,
+  flashKind?: FlashKind,
 ): string {
   const body = `
     <h1>Dashboard</h1>
@@ -70,7 +71,7 @@ export function dashboardPage(
     ${
       pending.length === 0
         ? `<div class="card empty">Nothing waiting on manual review.</div>`
-        : `<table>
+        : `<div class="table-wrap"><table>
           <thead>
             <tr>
               <th>Discord ID</th><th>Name</th><th>Email</th><th>Reason</th>
@@ -78,7 +79,7 @@ export function dashboardPage(
             </tr>
           </thead>
           <tbody>${pending.map(reviewRow).join("")}</tbody>
-        </table>`
+        </table></div>`
     }
 
     <h2>Verification settings</h2>
@@ -97,7 +98,7 @@ export function dashboardPage(
           <label for="sendJoinDm">DM new members a verification link automatically on join</label>
         </div>
 
-        <button type="submit" class="btn-primary" style="margin-top:20px;">Save settings</button>
+        <button type="submit" class="btn-primary mt-lg">Save settings</button>
       </form>
     </div>
 
@@ -111,5 +112,5 @@ export function dashboardPage(
     </div>
   `;
 
-  return renderAdminPage("Dashboard", user, body, flash);
+  return renderAdminPage("Dashboard", user, body, flash, flashKind);
 }

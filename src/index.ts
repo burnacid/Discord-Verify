@@ -5,13 +5,18 @@ import { registerCommands } from "./bot/commands.js";
 import "./bot/events/guildMemberAdd.js";
 import "./bot/events/interactionCreate.js";
 import "./bot/events/messageCreate.js";
+import { sweepEmptyJtcChannels } from "./bot/events/voiceStateUpdate.js";
 import { createApp } from "./web/app.js";
 import { startCleanupJob } from "./jobs/cleanup.js";
+import { startRssPollerJob } from "./jobs/rssPoller.js";
+import { startEventSyncJob } from "./jobs/eventSync.js";
 import { prisma } from "./db.js";
 import { initRuntimeSettings } from "./runtimeSettings.js";
 import { registerShutdown } from "./lifecycle.js";
 
 const CLEANUP_INTERVAL_MS = 60 * 60 * 1000;
+const RSS_POLL_INTERVAL_MS = 5 * 60 * 1000;
+const EVENT_SYNC_INTERVAL_MS = 5 * 60 * 1000;
 
 function closeServer(server: Server): Promise<void> {
   return new Promise((resolve) => server.close(() => resolve()));
@@ -34,7 +39,13 @@ async function main() {
     console.error("Failed to register slash commands, continuing without them", err);
   }
 
+  // Clean up any Join-to-Create channels that emptied out while the bot was
+  // offline — the live voiceStateUpdate handler covers normal operation.
+  sweepEmptyJtcChannels().catch((err) => console.error("JTC startup sweep failed", err));
+
   const cleanupInterval = startCleanupJob(CLEANUP_INTERVAL_MS);
+  const rssPollerInterval = startRssPollerJob(RSS_POLL_INTERVAL_MS);
+  const eventSyncInterval = startEventSyncJob(EVENT_SYNC_INTERVAL_MS);
 
   const app = createApp();
   // Bind to localhost only — this app is meant to sit behind a reverse
@@ -50,6 +61,8 @@ async function main() {
     console.log(`Received ${signal}, shutting down...`);
 
     clearInterval(cleanupInterval);
+    clearInterval(rssPollerInterval);
+    clearInterval(eventSyncInterval);
     await closeServer(server);
     await prisma.$disconnect();
     await client.destroy();

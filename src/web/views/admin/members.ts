@@ -1,5 +1,5 @@
 import { renderAdminPage } from "./layout.js";
-import type { AdminUser } from "./layout.js";
+import type { AdminUser, FlashKind } from "./layout.js";
 
 export interface MemberRow {
   discordId: string;
@@ -47,16 +47,36 @@ export function membersPage(
   results: MemberRow[],
   flash?: string,
   statusFilter: string | null = null,
+  page = 1,
+  totalPages = 1,
+  flashKind?: FlashKind,
 ): string {
   const showResults = statusFilter !== null || query !== "";
   const emptyMessage = statusFilter ? `No members with status "${statusFilter}".` : "No matching members found.";
+
+  const pager =
+    statusFilter && totalPages > 1
+      ? `<div class="actions mt-md">
+          ${
+            page > 1
+              ? `<a class="btn btn-secondary" href="/admin/members?status=${statusFilter}&page=${page - 1}">← Prev</a>`
+              : ""
+          }
+          <span class="hint">Page ${page} of ${totalPages}</span>
+          ${
+            page < totalPages
+              ? `<a class="btn btn-secondary" href="/admin/members?status=${statusFilter}&page=${page + 1}">Next →</a>`
+              : ""
+          }
+        </div>`
+      : "";
 
   const body = `
     <h1>Members</h1>
     <form method="get" action="/admin/members" style="margin-bottom: 20px;">
       <label for="q">Search by Discord ID or username</label>
       <input type="search" id="q" name="q" value="${escapeHtml(query)}" placeholder="e.g. 123456789012345678 or a username" />
-      <button type="submit" class="btn-primary" style="margin-top:12px;">Search</button>
+      <button type="submit" class="btn-primary mt-sm">Search</button>
     </form>
 
     ${
@@ -70,14 +90,17 @@ export function membersPage(
         ? ""
         : results.length === 0
           ? `<div class="card empty">${emptyMessage}</div>`
-          : `<table>
-            <thead>
-              <tr><th>Discord ID</th><th>Username</th><th>Status</th><th>Country</th><th>Last IP</th><th>Verified at</th><th></th></tr>
-            </thead>
-            <tbody>${results.map(memberRow).join("")}</tbody>
-          </table>`
+          : `<div class="table-wrap">
+            <table>
+              <thead>
+                <tr><th>Discord ID</th><th>Username</th><th>Status</th><th>Country</th><th>Last IP</th><th>Verified at</th><th></th></tr>
+              </thead>
+              <tbody>${results.map(memberRow).join("")}</tbody>
+            </table>
+          </div>
+          ${pager}`
     }
   `;
 
-  return renderAdminPage("Members", user, body, flash);
+  return renderAdminPage("Members", user, body, flash, flashKind);
 }

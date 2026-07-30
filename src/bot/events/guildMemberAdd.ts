@@ -1,6 +1,7 @@
 import { GuildMember } from "discord.js";
 import { client } from "../client.js";
 import { getRuntimeSettings } from "../../runtimeSettings.js";
+import { sendWelcomeMessage } from "../welcomeMessage.js";
 import {
   assignVerifiedRole,
   ensureMember,
@@ -11,6 +12,10 @@ import {
 } from "../verificationService.js";
 
 client.on("guildMemberAdd", async (member: GuildMember) => {
+  // Independent of the verification flow below — posts regardless of
+  // verification status, same moment the join is first observed.
+  sendWelcomeMessage(member).catch((err) => console.error("Failed to send welcome message", err));
+
   const existing = await ensureMember(member.id, member.guild.id);
 
   // Previously-verified member rejoining: restore their role directly
