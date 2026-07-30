@@ -1,5 +1,5 @@
 import { renderAdminPage } from "./layout.js";
-import type { AdminUser } from "./layout.js";
+import type { AdminUser, FlashKind } from "./layout.js";
 import type { JtcTrigger } from "@prisma/client";
 import type { GuildVoiceChannel } from "../../../bot/channelLookup.js";
 
@@ -38,6 +38,7 @@ export function jtcPage(
   channels: GuildVoiceChannel[],
   availableChannels: GuildVoiceChannel[],
   flash?: string,
+  flashKind?: FlashKind,
 ): string {
   const body = `
     <h1>Join to Create</h1>
@@ -46,12 +47,12 @@ export function jtcPage(
     ${
       triggers.length === 0
         ? `<div class="card empty">No Join to Create triggers configured yet.</div>`
-        : `<table>
+        : `<div class="table-wrap"><table>
           <thead>
             <tr><th>Name</th><th>Trigger channel</th><th>Active channels</th><th></th></tr>
           </thead>
           <tbody>${triggers.map((t, i) => triggerRow(t, activeCounts[i], channels)).join("")}</tbody>
-        </table>`
+        </table></div>`
     }
 
     <h2>Add a trigger</h2>
@@ -68,11 +69,11 @@ export function jtcPage(
               <select id="channelId" name="channelId" required>${channelOptions(availableChannels)}</select>
               <div class="hint">The voice channel members join to spawn a new channel.</div>
 
-              <button type="submit" class="btn-primary" style="margin-top:20px;">Add trigger</button>
+              <button type="submit" class="btn-primary mt-lg">Add trigger</button>
             </form>`
       }
     </div>
   `;
 
-  return renderAdminPage("Join to Create", user, body, flash);
+  return renderAdminPage("Join to Create", user, body, flash, flashKind);
 }

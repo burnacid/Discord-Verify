@@ -9,6 +9,7 @@ import { dashboardPage } from "../views/admin/dashboard.js";
 import type { PendingReviewRow } from "../views/admin/dashboard.js";
 import { renderAdminPage } from "../views/admin/layout.js";
 import { errorPage } from "../views/verifyPages.js";
+import { flashQuery, parseFlashKind } from "./flashQuery.js";
 
 export const dashboardRouter = Router();
 
@@ -43,6 +44,7 @@ dashboardRouter.get(
     }));
 
     const flash = typeof req.query.flash === "string" ? req.query.flash : undefined;
+    const flashKind = parseFlashKind(req.query.flashKind);
 
     res.send(
       dashboardPage(
@@ -51,6 +53,7 @@ dashboardRouter.get(
         pending,
         getRuntimeSettings(),
         flash,
+        flashKind,
       ),
     );
   }),
@@ -67,7 +70,7 @@ dashboardRouter.post(
         : result.reason === "already_resolved"
           ? `Already resolved as ${result.entryStatus}.`
           : "Couldn't assign the Verified role. Check the bot's permissions/role position.";
-    res.redirect(`/admin?flash=${encodeURIComponent(flash)}`);
+    res.redirect(`/admin?${flashQuery(flash, result.ok ? undefined : "error")}`);
   }),
 );
 
@@ -84,7 +87,7 @@ dashboardRouter.post(
         : result.reason === "already_resolved"
           ? `Already resolved as ${result.entryStatus}.`
           : "Couldn't remove the member from the server. Check the bot's permissions/role position.";
-    res.redirect(`/admin?flash=${encodeURIComponent(flash)}`);
+    res.redirect(`/admin?${flashQuery(flash, result.ok ? undefined : "error")}`);
   }),
 );
 
@@ -109,7 +112,7 @@ dashboardRouter.post(
       sendJoinDm,
     });
 
-    res.redirect(`/admin?flash=${encodeURIComponent("Settings saved.")}`);
+    res.redirect(`/admin?${flashQuery("Settings saved.")}`);
   }),
 );
 

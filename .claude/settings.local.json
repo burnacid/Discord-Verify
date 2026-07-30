@@ -9,7 +9,8 @@
       "Bash(tasklist //FI \"IMAGENAME eq node.exe\")",
       "WebFetch(domain:ipapi.co)",
       "Bash(tasklist)",
-      "Bash(echo \"exit code: $?\")"
+      "Bash(echo \"exit code: $?\")",
+      "Bash(echo \"exit: $?\")"
     ]
   }
 }

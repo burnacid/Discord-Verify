@@ -1,5 +1,5 @@
 import { renderAdminPage } from "./layout.js";
-import type { AdminUser } from "./layout.js";
+import type { AdminUser, FlashKind } from "./layout.js";
 import type { RssFeed } from "@prisma/client";
 import type Parser from "rss-parser";
 
@@ -32,6 +32,7 @@ export function rssTestPage(
   items: Parser.Item[],
   defaultTemplate: string,
   flash?: string,
+  flashKind?: FlashKind,
 ): string {
   const effectiveTemplate = feed.template ?? defaultTemplate;
   const usingDefault = feed.template === null;
@@ -43,16 +44,16 @@ export function rssTestPage(
     ${
       items.length === 0
         ? `<div class="card empty">No items found in this feed.</div>`
-        : `<table>
+        : `<div class="table-wrap"><table>
           <thead>
             <tr><th>Title</th><th>Published</th><th></th></tr>
           </thead>
           <tbody>${items.map((item, i) => itemRow(item, i)).join("")}</tbody>
-        </table>`
+        </table></div>`
     }
 
-    <p style="margin-top:20px;"><a href="/admin/rss">Back to RSS Feeds</a></p>
+    <p class="mt-lg"><a href="/admin/rss">Back to RSS Feeds</a></p>
   `;
 
-  return renderAdminPage(`Test — ${feed.name}`, user, body, flash);
+  return renderAdminPage(`Test — ${feed.name}`, user, body, flash, flashKind);
 }

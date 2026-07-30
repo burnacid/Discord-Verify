@@ -1,3 +1,5 @@
+import path from "node:path";
+import { fileURLToPath } from "node:url";
 import express from "express";
 import type { NextFunction, Request, Response } from "express";
 import { healthRouter } from "./routes/health.js";
@@ -12,6 +14,9 @@ import "./admin/modules.js";
 import { adminModules } from "./admin/moduleRegistry.js";
 import { errorPage, notFoundPage } from "./views/verifyPages.js";
 
+const __dirname = path.dirname(fileURLToPath(import.meta.url));
+const assetsPath = path.join(__dirname, "public", "assets");
+
 export function createApp() {
   const app = express();
   // Trust exactly one hop (the Virtualmin Apache/Nginx reverse proxy in front of this app),
@@ -21,6 +26,9 @@ export function createApp() {
   app.use(express.urlencoded({ extended: false }));
   app.use(requestLogger);
   app.use(sessionMiddleware());
+  // Only the shared theme.css/admin.js live here — deliberately not serving
+  // the whole public/ directory (join.html is served explicitly by joinRouter).
+  app.use("/assets", express.static(assetsPath));
 
   app.use(healthRouter);
   app.use(joinRouter);

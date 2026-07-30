@@ -8,6 +8,7 @@ import { asyncHandler } from "../asyncHandler.js";
 import { requireAdmin } from "./session.js";
 import { membersPage } from "../views/admin/members.js";
 import type { MemberRow } from "../views/admin/members.js";
+import { flashQuery, parseFlashKind } from "./flashQuery.js";
 
 export const membersRouter = Router();
 
@@ -15,7 +16,7 @@ membersRouter.use("/admin/members", requireAdmin);
 
 const SNOWFLAKE_RE = /^\d{15,25}$/;
 const VALID_STATUSES = ["verified", "pending_review", "rejected", "unverified"] as const;
-const STATUS_LIST_LIMIT = 100;
+const STATUS_LIST_PAGE_SIZE = 100;
 
 function isValidStatus(value: unknown): value is MemberStatus {
   return typeof value === "string" && (VALID_STATUSES as readonly string[]).includes(value);
@@ -26,11 +27,16 @@ membersRouter.get(
   asyncHandler(async (req, res) => {
     const query = typeof req.query.q === "string" ? req.query.q.trim() : "";
     const flash = typeof req.query.flash === "string" ? req.query.flash : undefined;
+    const flashKind = parseFlashKind(req.query.flashKind);
     const statusFilter = isValidStatus(req.query.status) ? req.query.status : null;
+    const page = Math.max(1, Number(req.query.page) || 1);
 
     let results: MemberRow[] = [];
+    let totalPages = 1;
     if (statusFilter) {
-      results = await lookupByStatus(statusFilter);
+      const { rows, total } = await lookupByStatus(statusFilter, page);
+      results = rows;
+      totalPages = Math.max(1, Math.ceil(total / STATUS_LIST_PAGE_SIZE));
     } else if (query) {
       results = SNOWFLAKE_RE.test(query) ? await lookupById(query) : await lookupByUsername(query);
     }
@@ -42,6 +48,9 @@ membersRouter.get(
         results,
         flash,
         statusFilter,
+        page,
+        totalPages,
+        flashKind,
       ),
     );
   }),
@@ -53,7 +62,7 @@ membersRouter.post(
     const { discordId } = req.params;
     const result = await verifyMember(discordId, config.discord.guildId, req.session.discordId!, "admin panel");
     const flash = result.ok ? "Member verified." : result.reason;
-    res.redirect(`/admin/members?q=${encodeURIComponent(discordId)}&flash=${encodeURIComponent(flash)}`);
+    res.redirect(`/admin/members?q=${encodeURIComponent(discordId)}&${flashQuery(flash, result.ok ? undefined : "error")}`);
   }),
 );
 
@@ -63,7 +72,7 @@ membersRouter.post(
     const { discordId } = req.params;
     const result = await unverifyMember(discordId, config.discord.guildId, req.session.discordId!, "admin panel");
     const flash = result.ok ? "Member unverified." : result.reason;
-    res.redirect(`/admin/members?q=${encodeURIComponent(discordId)}&flash=${encodeURIComponent(flash)}`);
+    res.redirect(`/admin/members?q=${encodeURIComponent(discordId)}&${flashQuery(flash, result.ok ? undefined : "error")}`);
   }),
 );
 
@@ -109,14 +118,18 @@ async function lookupByUsername(query: string): Promise<MemberRow[]> {
   });
 }
 
-async function lookupByStatus(status: MemberStatus): Promise<MemberRow[]> {
-  const dbMembers = await prisma.member.findMany({
-    where: { status },
-    orderBy: { createdAt: "desc" },
-    take: STATUS_LIST_LIMIT,
-  });
+async function lookupByStatus(status: MemberStatus, page: number): Promise<{ rows: MemberRow[]; total: number }> {
+  const [dbMembers, total] = await Promise.all([
+    prisma.member.findMany({
+      where: { status },
+      orderBy: { createdAt: "desc" },
+      take: STATUS_LIST_PAGE_SIZE,
+      skip: (page - 1) * STATUS_LIST_PAGE_SIZE,
+    }),
+    prisma.member.count({ where: { status } }),
+  ]);
 
-  return Promise.all(
+  const rows = await Promise.all(
     dbMembers.map(async (m) => {
       const guildMember = await fetchGuildMember(m.discordId);
       return {
@@ -129,4 +142,6 @@ async function lookupByStatus(status: MemberStatus): Promise<MemberRow[]> {
       };
     }),
   );
+
+  return { rows, total };
 }

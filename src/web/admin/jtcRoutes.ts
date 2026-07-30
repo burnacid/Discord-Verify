@@ -5,6 +5,7 @@ import { asyncHandler } from "../asyncHandler.js";
 import { requireAdmin } from "./session.js";
 import { jtcPage } from "../views/admin/jtc.js";
 import { errorPage } from "../views/verifyPages.js";
+import { flashQuery, parseFlashKind } from "./flashQuery.js";
 
 export const jtcRouter = Router();
 
@@ -18,6 +19,7 @@ jtcRouter.get(
   "/admin/jtc",
   asyncHandler(async (req, res) => {
     const flash = typeof req.query.flash === "string" ? req.query.flash : undefined;
+    const flashKind = parseFlashKind(req.query.flashKind);
     const [triggers, channels] = await Promise.all([
       prisma.jtcTrigger.findMany({ orderBy: { createdAt: "asc" } }),
       fetchGuildVoiceChannels(),
@@ -27,7 +29,7 @@ jtcRouter.get(
     );
     const triggerChannelIds = new Set(triggers.map((t) => t.channelId));
     const availableChannels = channels.filter((c) => !triggerChannelIds.has(c.id));
-    res.send(jtcPage(adminUser(req), triggers, activeCounts, channels, availableChannels, flash));
+    res.send(jtcPage(adminUser(req), triggers, activeCounts, channels, availableChannels, flash, flashKind));
   }),
 );
 
@@ -44,12 +46,12 @@ jtcRouter.post(
 
     const existing = await prisma.jtcTrigger.findUnique({ where: { channelId } });
     if (existing) {
-      res.redirect(`/admin/jtc?flash=${encodeURIComponent("That channel is already a trigger.")}`);
+      res.redirect(`/admin/jtc?${flashQuery("That channel is already a trigger.", "warning")}`);
       return;
     }
 
     await prisma.jtcTrigger.create({ data: { name, channelId } });
-    res.redirect(`/admin/jtc?flash=${encodeURIComponent("Trigger added.")}`);
+    res.redirect(`/admin/jtc?${flashQuery("Trigger added.")}`);
   }),
 );
 
@@ -59,6 +61,6 @@ jtcRouter.post(
     // Only removes the trigger row — channels it already spawned are left
     // running and get cleaned up normally once they empty out.
     await prisma.jtcTrigger.delete({ where: { id: req.params.id } }).catch(() => {});
-    res.redirect(`/admin/jtc?flash=${encodeURIComponent("Trigger deleted.")}`);
+    res.redirect(`/admin/jtc?${flashQuery("Trigger deleted.")}`);
   }),
 );

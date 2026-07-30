@@ -8,6 +8,7 @@ import { asyncHandler } from "../asyncHandler.js";
 import { requireAdmin } from "./session.js";
 import { welcomePage } from "../views/admin/welcome.js";
 import { errorPage } from "../views/verifyPages.js";
+import { flashQuery, parseFlashKind } from "./flashQuery.js";
 
 export const welcomeRouter = Router();
 
@@ -21,8 +22,9 @@ welcomeRouter.get(
   "/admin/welcome",
   asyncHandler(async (req, res) => {
     const flash = typeof req.query.flash === "string" ? req.query.flash : undefined;
+    const flashKind = parseFlashKind(req.query.flashKind);
     const [settings, channels] = await Promise.all([getWelcomeSettings(), fetchGuildTextChannels()]);
-    res.send(welcomePage(adminUser(req), settings, channels, flash));
+    res.send(welcomePage(adminUser(req), settings, channels, flash, flashKind));
   }),
 );
 
@@ -47,7 +49,7 @@ welcomeRouter.post(
       create: { id: 1, enabled, channelId: channelId || null, template },
       update: { enabled, channelId: channelId || null, template },
     });
-    res.redirect(`/admin/welcome?flash=${encodeURIComponent("Welcome message settings saved.")}`);
+    res.redirect(`/admin/welcome?${flashQuery("Welcome message settings saved.")}`);
   }),
 );
 
@@ -56,13 +58,13 @@ welcomeRouter.post(
   asyncHandler(async (req, res) => {
     const settings = await getWelcomeSettings();
     if (!settings.channelId) {
-      res.redirect(`/admin/welcome?flash=${encodeURIComponent("Set a channel before sending a test message.")}`);
+      res.redirect(`/admin/welcome?${flashQuery("Set a channel before sending a test message.", "error")}`);
       return;
     }
 
     const channel = await client.channels.fetch(settings.channelId).catch(() => null);
     if (!channel?.isTextBased() || channel.isThread() || channel.isDMBased()) {
-      res.redirect(`/admin/welcome?flash=${encodeURIComponent("Couldn't find or post to the configured channel.")}`);
+      res.redirect(`/admin/welcome?${flashQuery("Couldn't find or post to the configured channel.", "error")}`);
       return;
     }
 
@@ -71,6 +73,6 @@ welcomeRouter.post(
     const content = await renderWelcomeTemplate(settings.template || DEFAULT_WELCOME_TEMPLATE, member);
     await channel.send({ content });
 
-    res.redirect(`/admin/welcome?flash=${encodeURIComponent("Test message sent.")}`);
+    res.redirect(`/admin/welcome?${flashQuery("Test message sent.")}`);
   }),
 );

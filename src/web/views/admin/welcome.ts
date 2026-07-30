@@ -1,5 +1,5 @@
 import { renderAdminPage } from "./layout.js";
-import type { AdminUser } from "./layout.js";
+import type { AdminUser, FlashKind } from "./layout.js";
 import type { WelcomeSettingsView } from "../../../bot/welcomeMessage.js";
 import type { GuildTextChannel } from "../../../bot/channelLookup.js";
 
@@ -26,6 +26,7 @@ export function welcomePage(
   settings: WelcomeSettingsView,
   channels: GuildTextChannel[],
   flash?: string,
+  flashKind?: FlashKind,
 ): string {
   const body = `
     <h1>Welcome Message</h1>
@@ -48,14 +49,14 @@ export function welcomePage(
         <textarea id="template" name="template" required>${escapeHtml(settings.template)}</textarea>
         <div class="hint">${PLACEHOLDER_HINT}</div>
 
-        <button type="submit" class="btn-primary" style="margin-top:20px;">Save</button>
+        <button type="submit" class="btn-primary mt-lg">Save</button>
       </form>
     </div>
 
-    <form method="post" action="/admin/welcome/test" style="margin-top:16px;">
+    <form method="post" action="/admin/welcome/test" class="mt-md" data-loading-text="Sending…">
       <button type="submit" class="btn-secondary">Send test message</button>
     </form>
   `;
 
-  return renderAdminPage("Welcome Message", user, body, flash);
+  return renderAdminPage("Welcome Message", user, body, flash, flashKind);
 }

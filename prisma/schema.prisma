@@ -130,6 +130,52 @@ model WelcomeSettings {
   updatedAt DateTime @updatedAt
 }
 
+model EventSource {
+  id              String    @id @default(uuid())
+  name            String
+  provider        String    @default("custom") // "custom" | "tribe" (WordPress The Events Calendar)
+  apiUrl          String
+  timezone        String    @default("Europe/Amsterdam")
+  durationMinutes Int       @default(240)
+  lookaheadDays   Int       @default(7) // "tribe" provider only: only fetch/create events within this many days
+  nameFilter      String?   @db.Text // comma-separated keywords; blank/null = no filter
+  nameFilterMode  String    @default("include") // "include" = only sync matches; "exclude" = sync everything except matches
+  messageChannelId String? // null = don't post per-event messages; not every API needs this
+  messageTemplate String   @db.Text @default("{{description}}") // embed description body; title/fields are structured separately
+  mentionRoleId   String? // role to @-mention when a new event message is first posted (null = no mention)
+  enabled         Boolean   @default(true)
+  lastSyncedAt    DateTime?
+  createdAt       DateTime  @default(now())
+  updatedAt       DateTime  @updatedAt
+}
+
+// No DB-level relation/cascade to EventSource — deleting a source must also
+// delete the live Discord scheduled events/messages it created, which a DB
+// cascade can't do by itself. That cleanup happens explicitly in
+// deleteAllEventsForSource() (src/jobs/eventSync.ts), called before the
+// EventSource row (and these rows) are removed.
+model EventSourceItem {
+  id             String    @id @default(uuid())
+  sourceId       String
+  externalId     String
+  discordEventId String
+  // Cached start time of the underlying event — lets a windowed provider
+  // (tribe) distinguish "genuinely cancelled/filtered out" from "just
+  // outside our current fetch window" without wrongly deleting the latter.
+  startUtc       DateTime  @default(now())
+  // Cached end time — lets us detect "this event is done" independently of
+  // whether the item is still listed in the API (some APIs keep past items
+  // around indefinitely), so the posted message gets cleaned up promptly.
+  endUtc         DateTime  @default(now())
+  // The per-event channel message this item posted, if the source has
+  // messages enabled — null if messages aren't configured for this source.
+  messageId      String?
+  apiUpdatedAt   DateTime?
+  createdAt      DateTime  @default(now())
+
+  @@unique([sourceId, externalId])
+}
+
 model ReviewQueueEntry {
   id         String       @id @default(uuid())
   discordId  String

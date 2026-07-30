@@ -1,5 +1,5 @@
 import { renderAdminPage } from "./layout.js";
-import type { AdminUser } from "./layout.js";
+import type { AdminUser, FlashKind } from "./layout.js";
 import type { RssFeed } from "@prisma/client";
 import type { GuildTextChannel } from "../../../bot/channelLookup.js";
 
@@ -45,7 +45,7 @@ function feedRow(feed: RssFeed, channels: GuildTextChannel[]): string {
     <td colspan="6">
       <details>
         <summary class="hint">Edit</summary>
-        <form method="post" action="/admin/rss/${feed.id}/edit" style="margin-top:10px;">
+        <form method="post" action="/admin/rss/${feed.id}/edit" class="mt-sm">
           <label for="name-${feed.id}">Name</label>
           <input type="text" id="name-${feed.id}" name="name" value="${escapeHtml(feed.name)}" />
 
@@ -59,7 +59,7 @@ function feedRow(feed: RssFeed, channels: GuildTextChannel[]): string {
           <textarea id="template-${feed.id}" name="template" placeholder="Uses the default template below">${escapeHtml(feed.template ?? "")}</textarea>
           <div class="hint">${PLACEHOLDER_HINT}</div>
 
-          <button type="submit" class="btn-primary" style="margin-top:14px;">Save</button>
+          <button type="submit" class="btn-primary mt-md">Save</button>
         </form>
       </details>
     </td>
@@ -72,11 +72,12 @@ export function rssPage(
   channels: GuildTextChannel[],
   defaultTemplate: string,
   flash?: string,
+  flashKind?: FlashKind,
 ): string {
   const body = `
     <h1>RSS Feeds</h1>
 
-    <form class="inline" method="post" action="/admin/rss/check" style="margin-bottom:16px;">
+    <form class="inline" method="post" action="/admin/rss/check" style="margin-bottom:16px;" data-loading-text="Checking…">
       <button type="submit" class="btn-primary">Check now</button>
     </form>
 
@@ -87,19 +88,19 @@ export function rssPage(
         <textarea id="defaultTemplate" name="defaultTemplate" required>${escapeHtml(defaultTemplate)}</textarea>
         <div class="hint">${PLACEHOLDER_HINT}</div>
 
-        <button type="submit" class="btn-primary" style="margin-top:14px;">Save default template</button>
+        <button type="submit" class="btn-primary mt-md">Save default template</button>
       </form>
     </div>
 
     ${
       feeds.length === 0
         ? `<div class="card empty">No RSS feeds configured yet.</div>`
-        : `<table>
+        : `<div class="table-wrap"><table>
           <thead>
             <tr><th>Name</th><th>Feed URL</th><th>Channel</th><th>Status</th><th>Last posted</th><th></th></tr>
           </thead>
           <tbody>${feeds.map((f) => feedRow(f, channels)).join("")}</tbody>
-        </table>`
+        </table></div>`
     }
 
     <h2>Add a feed</h2>
@@ -119,10 +120,10 @@ export function rssPage(
         <textarea id="template" name="template" placeholder="Uses the default template above"></textarea>
         <div class="hint">${PLACEHOLDER_HINT}</div>
 
-        <button type="submit" class="btn-primary" style="margin-top:20px;">Add feed</button>
+        <button type="submit" class="btn-primary mt-lg">Add feed</button>
       </form>
     </div>
   `;
 
-  return renderAdminPage("RSS Feeds", user, body, flash);
+  return renderAdminPage("RSS Feeds", user, body, flash, flashKind);
 }

@@ -29,3 +29,17 @@ export async function fetchGuildVoiceChannels(): Promise<GuildVoiceChannel[]> {
     .map((c) => ({ id: c!.id, name: c!.name }))
     .sort((a, b) => a.name.localeCompare(b.name));
 }
+
+export interface GuildRole {
+  id: string;
+  name: string;
+}
+
+export async function fetchGuildRoles(): Promise<GuildRole[]> {
+  const guild = await client.guilds.fetch(config.discord.guildId);
+  const roles = await guild.roles.fetch();
+  return roles
+    .filter((r) => r.id !== guild.id) // exclude @everyone
+    .map((r) => ({ id: r.id, name: r.name }))
+    .sort((a, b) => a.name.localeCompare(b.name));
+}

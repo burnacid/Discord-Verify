@@ -7,6 +7,7 @@ import { requireAdmin } from "./session.js";
 import { rssPage } from "../views/admin/rss.js";
 import { rssTestPage } from "../views/admin/rssTest.js";
 import { errorPage, notFoundPage } from "../views/verifyPages.js";
+import { flashQuery, parseFlashKind } from "./flashQuery.js";
 
 export const rssRouter = Router();
 
@@ -20,12 +21,13 @@ rssRouter.get(
   "/admin/rss",
   asyncHandler(async (req, res) => {
     const flash = typeof req.query.flash === "string" ? req.query.flash : undefined;
+    const flashKind = parseFlashKind(req.query.flashKind);
     const [feeds, channels, defaultTemplate] = await Promise.all([
       prisma.rssFeed.findMany({ orderBy: { createdAt: "asc" } }),
       fetchGuildTextChannels(),
       getDefaultTemplate(),
     ]);
-    res.send(rssPage(adminUser(req), feeds, channels, defaultTemplate, flash));
+    res.send(rssPage(adminUser(req), feeds, channels, defaultTemplate, flash, flashKind));
   }),
 );
 
@@ -43,7 +45,7 @@ rssRouter.post(
     }
 
     await prisma.rssFeed.create({ data: { name, feedUrl, channelId, template } });
-    res.redirect(`/admin/rss?flash=${encodeURIComponent("Feed added.")}`);
+    res.redirect(`/admin/rss?${flashQuery("Feed added.")}`);
   }),
 );
 
@@ -67,10 +69,10 @@ rssRouter.post(
       .update({ where: { id: req.params.id }, data: { name, feedUrl, channelId, template } })
       .catch(() => null);
     if (!result) {
-      res.redirect(`/admin/rss?flash=${encodeURIComponent("Feed not found.")}`);
+      res.redirect(`/admin/rss?${flashQuery("Feed not found.", "error")}`);
       return;
     }
-    res.redirect(`/admin/rss?flash=${encodeURIComponent("Feed updated.")}`);
+    res.redirect(`/admin/rss?${flashQuery("Feed updated.")}`);
   }),
 );
 
@@ -79,11 +81,11 @@ rssRouter.post(
   asyncHandler(async (req, res) => {
     const existing = await prisma.rssFeed.findUnique({ where: { id: req.params.id } });
     if (!existing) {
-      res.redirect(`/admin/rss?flash=${encodeURIComponent("Feed not found.")}`);
+      res.redirect(`/admin/rss?${flashQuery("Feed not found.", "error")}`);
       return;
     }
     await prisma.rssFeed.update({ where: { id: req.params.id }, data: { enabled: !existing.enabled } });
-    res.redirect(`/admin/rss?flash=${encodeURIComponent(existing.enabled ? "Feed disabled." : "Feed enabled.")}`);
+    res.redirect(`/admin/rss?${flashQuery(existing.enabled ? "Feed disabled." : "Feed enabled.")}`);
   }),
 );
 
@@ -96,8 +98,9 @@ rssRouter.get(
       return;
     }
     const flash = typeof req.query.flash === "string" ? req.query.flash : undefined;
+    const flashKind = parseFlashKind(req.query.flashKind);
     const [items, defaultTemplate] = await Promise.all([fetchFeedItems(feed.feedUrl), getDefaultTemplate()]);
-    res.send(rssTestPage(adminUser(req), feed, items, defaultTemplate, flash));
+    res.send(rssTestPage(adminUser(req), feed, items, defaultTemplate, flash, flashKind));
   }),
 );
 
@@ -113,14 +116,14 @@ rssRouter.post(
     const items = await fetchFeedItems(feed.feedUrl);
     const item = Number.isInteger(itemIndex) ? items[itemIndex] : undefined;
     if (!item) {
-      res.redirect(`/admin/rss/${feed.id}/test?flash=${encodeURIComponent("Item not found — the feed may have changed.")}`);
+      res.redirect(`/admin/rss/${feed.id}/test?${flashQuery("Item not found — the feed may have changed.", "error")}`);
       return;
     }
 
     // Deliberately does not touch lastGuid/lastPostedAt — this is a manual
     // test post, not part of the normal dedup-tracked posting flow.
     await postItem(feed, item, await getDefaultTemplate());
-    res.redirect(`/admin/rss/${feed.id}/test?flash=${encodeURIComponent(`Posted "${item.title ?? "item"}" to the channel.`)}`);
+    res.redirect(`/admin/rss/${feed.id}/test?${flashQuery(`Posted "${item.title ?? "item"}" to the channel.`)}`);
   }),
 );
 
@@ -137,7 +140,7 @@ rssRouter.post(
       create: { id: 1, defaultTemplate },
       update: { defaultTemplate },
     });
-    res.redirect(`/admin/rss?flash=${encodeURIComponent("Default template saved.")}`);
+    res.redirect(`/admin/rss?${flashQuery("Default template saved.")}`);
   }),
 );
 
@@ -146,10 +149,10 @@ rssRouter.post(
   asyncHandler(async (req, res) => {
     try {
       await pollRssFeeds();
-      res.redirect(`/admin/rss?flash=${encodeURIComponent("Checked all feeds for new posts.")}`);
+      res.redirect(`/admin/rss?${flashQuery("Checked all feeds for new posts.")}`);
     } catch (err) {
       console.error("Manual RSS check failed", err);
-      res.redirect(`/admin/rss?flash=${encodeURIComponent("Check failed — see server logs.")}`);
+      res.redirect(`/admin/rss?${flashQuery("Check failed — see server logs.", "error")}`);
     }
   }),
 );
@@ -158,7 +161,7 @@ rssRouter.post(
   "/admin/rss/:id/delete",
   asyncHandler(async (req, res) => {
     await prisma.rssFeed.delete({ where: { id: req.params.id } }).catch(() => {});
-    res.redirect(`/admin/rss?flash=${encodeURIComponent("Feed deleted.")}`);
+    res.redirect(`/admin/rss?${flashQuery("Feed deleted.")}`);
   }),
 );
 
