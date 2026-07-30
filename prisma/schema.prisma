@@ -86,7 +86,7 @@ model RssFeed {
   feedUrl      String
   channelId    String
   enabled      Boolean   @default(true)
-  template     String?
+  template     String?   @db.Text
   lastGuid     String?
   lastPostedAt DateTime?
   createdAt    DateTime  @default(now())
@@ -98,7 +98,7 @@ model RssFeed {
 // scoped to the RSS module rather than mixed into the main Settings table.
 model RssSettings {
   id              Int      @id @default(1)
-  defaultTemplate String
+  defaultTemplate String   @db.Text
   updatedAt       DateTime @updatedAt
 }
 
@@ -118,6 +118,16 @@ model JtcChannel {
   triggerId String
   number    Int
   createdAt DateTime @default(now())
+}
+
+// Singleton row (id always 1) holding the join-welcome message config —
+// same pattern as Settings/RssSettings, scoped to this module.
+model WelcomeSettings {
+  id        Int      @id @default(1)
+  enabled   Boolean  @default(false)
+  channelId String?
+  template  String   @db.Text
+  updatedAt DateTime @updatedAt
 }
 
 model ReviewQueueEntry {
