@@ -80,7 +80,8 @@ touched. See `src/jobs/cleanup.ts`.
 ### Rate limiting & 404s
 
 `GET`/`POST /verify/:token` are capped at 20 requests per 15 minutes per IP
-(each fresh check can trigger a paid GeoIP/VPN lookup); `GET /join/invite`
+(the GeoIP/VPN check is a local lookup, not a rate-limited external API call,
+but this still guards against abuse); `GET /join/invite`
 is capped at 60 per 15 minutes. Both return a styled/JSON error respectively
 on `429`. Unmatched routes get a styled 404 page (`/join/invite` and
 `/health.json` get a JSON 404 instead, matching what callers of those
@@ -158,8 +159,8 @@ match `PUBLIC_BASE_URL` in `.env`.
 3. Create a `Verified` role below the bot's own role in the hierarchy, and
    set channel/category permissions so `@everyone` cannot send messages but
    `Verified` can.
-4. Sign up for an [IPQualityScore](https://www.ipqualityscore.com/) API key
-   (or swap the provider in `src/geo/provider.ts`).
+4. GeoIP/VPN detection is self-hosted and needs no signup — data downloads
+   automatically on first startup (see notes below).
 5. Add a site in the [Cloudflare Turnstile dashboard](https://dash.cloudflare.com/)
    (the domain doesn't need to already use Cloudflare) to get
    `TURNSTILE_SITE_KEY` and `TURNSTILE_SECRET_KEY`.
@@ -281,3 +282,20 @@ pm2 logs discord-verify --lines 50 --nostream   # confirm it came back up cleanl
   matter once, to seed the database on first boot.
 - The GeoIP/VPN provider is behind `src/geo/provider.ts`'s `GeoProvider`
   interface — swap in a different service without touching route logic.
+  The default implementation is fully self-hosted and open source: a
+  GeoLite2-derived country database ([sapics/ip-location-db](https://github.com/sapics/ip-location-db))
+  and a known-VPN-network CIDR list ([X4BNet/lists_vpn](https://github.com/X4BNet/lists_vpn))
+  are downloaded into `data/geoip/` on startup and refreshed every 12h
+  (`src/geo/updater.ts`, `src/jobs/geoUpdater.ts`) — no API key, no
+  per-request rate limit. There's no granular fraud score from these open
+  sources, so `fraudScore`/`MAX_FRAUD_SCORE` is effectively a 0/100 stand-in
+  for the VPN flag now, kept only for DB/UI compatibility.
+- Private/loopback IPs (local dev with no reverse proxy, or a proxy that
+  isn't forwarding the real IP) have no GeoIP data. Set
+  `GEO_ALLOW_CLIENT_IP_FALLBACK=true` to have the visitor's browser report
+  its own public IP for the check in that case (`src/geo/privateIp.ts`,
+  `detectingIpPage()` in `src/web/views/verifyPages.ts`,
+  `POST /verify/:token/local-ip`). Off by default — a visitor's browser can
+  report any IP it wants, so only enable this where you trust the visitor's
+  browser more than your network path (i.e. not in production behind a
+  correctly configured reverse proxy).

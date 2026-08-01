@@ -10,6 +10,8 @@ import { createApp } from "./web/app.js";
 import { startCleanupJob } from "./jobs/cleanup.js";
 import { startRssPollerJob } from "./jobs/rssPoller.js";
 import { startEventSyncJob } from "./jobs/eventSync.js";
+import { startGeoUpdaterJob } from "./jobs/geoUpdater.js";
+import { refreshGeoData } from "./geo/updater.js";
 import { prisma } from "./db.js";
 import { initRuntimeSettings } from "./runtimeSettings.js";
 import { registerShutdown } from "./lifecycle.js";
@@ -17,6 +19,7 @@ import { registerShutdown } from "./lifecycle.js";
 const CLEANUP_INTERVAL_MS = 60 * 60 * 1000;
 const RSS_POLL_INTERVAL_MS = 5 * 60 * 1000;
 const EVENT_SYNC_INTERVAL_MS = 5 * 60 * 1000;
+const GEO_UPDATE_INTERVAL_MS = 12 * 60 * 60 * 1000;
 
 function closeServer(server: Server): Promise<void> {
   return new Promise((resolve) => server.close(() => resolve()));
@@ -24,6 +27,9 @@ function closeServer(server: Server): Promise<void> {
 
 async function main() {
   await initRuntimeSettings();
+  // Must succeed before the web server starts accepting /verify requests —
+  // there's no fallback GeoIP/VPN path once it's up.
+  await refreshGeoData();
 
   client.once("clientReady", () => {
     console.log(`Bot logged in as ${client.user?.tag}`);
@@ -46,6 +52,7 @@ async function main() {
   const cleanupInterval = startCleanupJob(CLEANUP_INTERVAL_MS);
   const rssPollerInterval = startRssPollerJob(RSS_POLL_INTERVAL_MS);
   const eventSyncInterval = startEventSyncJob(EVENT_SYNC_INTERVAL_MS);
+  const geoUpdaterInterval = startGeoUpdaterJob(GEO_UPDATE_INTERVAL_MS);
 
   const app = createApp();
   // Bind to localhost only — this app is meant to sit behind a reverse
@@ -63,6 +70,7 @@ async function main() {
     clearInterval(cleanupInterval);
     clearInterval(rssPollerInterval);
     clearInterval(eventSyncInterval);
+    clearInterval(geoUpdaterInterval);
     await closeServer(server);
     await prisma.$disconnect();
     await client.destroy();
