@@ -1,14 +1,17 @@
-import { Router } from "express";
+import { Router, json } from "express";
+import { isIP } from "node:net";
 import { prisma } from "../../db.js";
 import { config } from "../../config.js";
 import { getRuntimeSettings } from "../../runtimeSettings.js";
 import { geoProvider } from "../../geo/provider.js";
+import { isPrivateIp } from "../../geo/privateIp.js";
 import { verifyTurnstileToken } from "../../captcha/turnstile.js";
 import { assignVerifiedRole } from "../../bot/verificationService.js";
 import { createReviewEntry } from "../../bot/reviewQueue.js";
 import { asyncHandler } from "../asyncHandler.js";
 import { verifyLimiter } from "../rateLimit.js";
 import {
+  detectingIpPage,
   errorPage,
   linkPreviewPage,
   reviewFormPage,
@@ -39,11 +42,12 @@ interface GeoResult {
   fraudScore: number;
   isVpn: boolean;
   raw: unknown;
+  ip: string;
 }
 
 async function ensureGeoCheck(
   token: string,
-  record: { geoCheckedAt: Date | null; geoCountry: string | null; geoFraudScore: number | null; geoIsVpn: boolean | null; geoRaw: unknown },
+  record: { geoCheckedAt: Date | null; geoCountry: string | null; geoFraudScore: number | null; geoIsVpn: boolean | null; geoRaw: unknown; geoIp: string | null },
   ip: string,
 ): Promise<GeoResult> {
   if (record.geoCheckedAt) {
@@ -52,6 +56,7 @@ async function ensureGeoCheck(
       fraudScore: record.geoFraudScore ?? 0,
       isVpn: record.geoIsVpn ?? false,
       raw: record.geoRaw,
+      ip: record.geoIp ?? ip,
     };
   }
 
@@ -67,7 +72,7 @@ async function ensureGeoCheck(
       geoCheckedAt: new Date(),
     },
   });
-  return result;
+  return { ...result, ip };
 }
 
 function isAutoVerified(geo: GeoResult): boolean {
@@ -113,6 +118,11 @@ verifyRouter.get("/verify/:token", verifyLimiter, asyncHandler(async (req, res) 
     return;
   }
 
+  if (config.geo.allowClientIpFallback && !record.geoCheckedAt && isPrivateIp(ip)) {
+    res.send(detectingIpPage(token));
+    return;
+  }
+
   let geo: GeoResult;
   try {
     geo = await ensureGeoCheck(token, record, ip);
@@ -126,7 +136,7 @@ verifyRouter.get("/verify/:token", verifyLimiter, asyncHandler(async (req, res) 
 
   await prisma.member.update({
     where: { discordId: record.discordId },
-    data: { country: geo.countryCode, ipRiskScore: geo.fraudScore, lastIp: ip },
+    data: { country: geo.countryCode, ipRiskScore: geo.fraudScore, lastIp: geo.ip },
   });
 
   if (isAutoVerified(geo)) {
@@ -181,6 +191,7 @@ verifyRouter.post("/verify/:token", verifyLimiter, asyncHandler(async (req, res)
     fraudScore: record.geoFraudScore ?? 0,
     isVpn: record.geoIsVpn ?? false,
     raw: record.geoRaw,
+    ip: record.geoIp,
   };
 
   const name = typeof req.body?.name === "string" ? req.body.name.trim() : "";
@@ -213,4 +224,38 @@ verifyRouter.post("/verify/:token", verifyLimiter, asyncHandler(async (req, res)
   await createReviewEntry(record.discordId, geo.isVpn ? "vpn" : "country", record.geoIp, geo, { name, email });
 
   res.send(reviewSubmittedPage());
+}));
+
+// Called by detectingIpPage()'s inline script when the server only sees a
+// private/loopback IP for this visitor (local dev, or a proxy that isn't
+// forwarding the real IP) and GEO_ALLOW_CLIENT_IP_FALLBACK is on. Runs the
+// normal GeoIP/VPN check using the visitor-reported public IP instead, then
+// the page reloads and GET /verify/:token picks up the now-cached result.
+verifyRouter.post("/verify/:token/local-ip", verifyLimiter, json(), asyncHandler(async (req, res) => {
+  const { token } = req.params;
+
+  const record = await prisma.verificationToken.findUnique({ where: { token } });
+  if (!record || record.usedAt || record.expiresAt < new Date() || record.geoCheckedAt) {
+    res.status(204).end();
+    return;
+  }
+
+  const ip = req.ip;
+  if (!ip) {
+    res.status(204).end();
+    return;
+  }
+
+  const reportedIp = typeof req.body?.ip === "string" ? req.body.ip.trim() : "";
+  const effectiveIp =
+    config.geo.allowClientIpFallback && reportedIp && isIP(reportedIp) && !isPrivateIp(reportedIp)
+      ? reportedIp
+      : ip;
+
+  try {
+    await ensureGeoCheck(token, record, effectiveIp);
+  } catch (err) {
+    console.error("GeoIP/VPN check failed (client-IP fallback)", err);
+  }
+  res.status(204).end();
 }));

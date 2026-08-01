@@ -1,3 +1,5 @@
+import { checkVpn, lookupCountry } from "./store.js";
+
 export interface IpCheckResult {
   countryCode: string | null;
   isVpn: boolean;
@@ -9,42 +11,24 @@ export interface GeoProvider {
   check(ip: string): Promise<IpCheckResult>;
 }
 
-const IPQS_API_KEY = process.env.IPQS_API_KEY;
-
-interface IpqsResponse {
-  success: boolean;
-  message?: string;
-  fraud_score: number;
-  country_code: string;
-  vpn: boolean;
-  proxy: boolean;
-  tor: boolean;
-}
-
-export class IpQualityScoreProvider implements GeoProvider {
+// Local, self-hosted GeoIP/VPN lookup: country comes from a GeoLite2 mmdb
+// file, VPN detection from a known-VPN-network CIDR list. Both are kept
+// in memory (see store.ts) and refreshed periodically on disk (see
+// updater.ts / jobs/geoUpdater.ts) instead of calling a rate-limited API
+// per request. There's no granular fraud score from these open sources, so
+// fraudScore is just a 0/100 stand-in for isVpn, kept for backwards
+// compatibility with the existing MAX_FRAUD_SCORE threshold and DB columns.
+export class LocalGeoProvider implements GeoProvider {
   async check(ip: string): Promise<IpCheckResult> {
-    if (!IPQS_API_KEY) {
-      throw new Error("IPQS_API_KEY is not configured");
-    }
-
-    const url = `https://ipqualityscore.com/api/json/ip/${IPQS_API_KEY}/${encodeURIComponent(ip)}?strictness=1&allow_public_access_points=true`;
-    const res = await fetch(url);
-    if (!res.ok) {
-      throw new Error(`IPQS request failed with status ${res.status}`);
-    }
-
-    const data = (await res.json()) as IpqsResponse;
-    if (!data.success) {
-      throw new Error(`IPQS request unsuccessful: ${data.message ?? "unknown error"}`);
-    }
-
+    const countryCode = lookupCountry(ip);
+    const isVpn = checkVpn(ip);
     return {
-      countryCode: data.country_code ?? null,
-      isVpn: Boolean(data.vpn || data.proxy || data.tor),
-      fraudScore: data.fraud_score,
-      raw: data,
+      countryCode,
+      isVpn,
+      fraudScore: isVpn ? 100 : 0,
+      raw: { countryCode, isVpn },
     };
   }
 }
 
-export const geoProvider: GeoProvider = new IpQualityScoreProvider();
+export const geoProvider: GeoProvider = new LocalGeoProvider();

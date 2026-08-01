@@ -45,4 +45,11 @@ export const config = {
     siteKey: required("TURNSTILE_SITE_KEY"),
     secretKey: required("TURNSTILE_SECRET_KEY"),
   },
+  geo: {
+    // Off by default: trusting a client-reported IP is only safe when the
+    // server genuinely can't see a real one (local dev, or a reverse proxy
+    // that isn't forwarding it) — see src/geo/privateIp.ts and the
+    // POST /verify/:token/local-ip route in src/web/routes/verify.ts.
+    allowClientIpFallback: process.env.GEO_ALLOW_CLIENT_IP_FALLBACK === "true",
+  },
 } as const;

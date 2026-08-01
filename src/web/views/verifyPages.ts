@@ -21,6 +21,45 @@ export function linkPreviewPage(): string {
   );
 }
 
+// Shown when the server can't see the visitor's real IP (private/loopback —
+// local dev, or a reverse proxy that isn't forwarding it) and
+// GEO_ALLOW_CLIENT_IP_FALLBACK is on. The script below asks the visitor's
+// own browser for its public IP and hands it back so the normal GeoIP/VPN
+// check can run against it. See POST /verify/:token/local-ip.
+export function detectingIpPage(token: string): string {
+  return renderPage(
+    "Discord Verification",
+    `<div class="icon pending">&#8635;</div>
+     <h1>One moment...</h1>
+     <p>Detecting your connection. This page will continue automatically.</p>`,
+    `<script>
+      (function () {
+        var token = ${JSON.stringify(token)};
+        function proceed(ip) {
+          fetch("/verify/" + encodeURIComponent(token) + "/local-ip", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ ip: ip }),
+          }).finally(function () {
+            location.reload();
+          });
+        }
+        var timeout = setTimeout(function () { proceed(null); }, 5000);
+        fetch("https://api.ipify.org?format=json")
+          .then(function (res) { return res.json(); })
+          .then(function (data) {
+            clearTimeout(timeout);
+            proceed(data && data.ip ? data.ip : null);
+          })
+          .catch(function () {
+            clearTimeout(timeout);
+            proceed(null);
+          });
+      })();
+    </script>`,
+  );
+}
+
 export function notFoundPage(): string {
   return renderPage(
     "Page not found",
