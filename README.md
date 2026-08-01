@@ -290,6 +290,15 @@ pm2 logs discord-verify --lines 50 --nostream   # confirm it came back up cleanl
   per-request rate limit. There's no granular fraud score from these open
   sources, so `fraudScore`/`MAX_FRAUD_SCORE` is effectively a 0/100 stand-in
   for the VPN flag now, kept only for DB/UI compatibility.
+- X4BNet's CIDR list has no IPv6 data at all, so IPv6 VPN detection instead
+  matches the visitor's ASN (via a combined IPv4+IPv6 ASN mmdb, same source
+  as the country database) against X4BNet's curated list of known-VPN ASN
+  numbers — this also runs as a secondary signal for IPv4, alongside the
+  CIDR list. ASN data is best-effort: if it fails to download, country
+  lookups and IPv4 CIDR-based VPN detection keep working unaffected. Check
+  current status (loaded, last refreshed, range/ASN counts) and manually
+  trigger a refresh or test an IP from `/admin` → **GeoIP / VPN**
+  (`src/web/admin/geoRoutes.ts`).
 - Private/loopback IPs (local dev with no reverse proxy, or a proxy that
   isn't forwarding the real IP) have no GeoIP data. Set
   `GEO_ALLOW_CLIENT_IP_FALLBACK=true` to have the visitor's browser report

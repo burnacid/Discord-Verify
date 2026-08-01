@@ -23,7 +23,11 @@
       "Bash(npm pack *)",
       "Bash(xargs -I{} sh -c 'echo ==={}===; cat {}')",
       "Bash(rm -rf /tmp/mmcheck)",
-      "Bash(npx tsx *)"
+      "Bash(npx tsx *)",
+      "Bash(curl -s \"https://api.github.com/repos/X4BNet/lists_vpn/contents/input/vpn/ips\")",
+      "Bash(curl -sI \"https://github.com/sapics/ip-location-db/releases/download/latest/asn.mmdb\")",
+      "Bash(curl -s \"https://api.github.com/repos/sapics/ip-location-db/releases/tags/latest\")",
+      "Bash(curl -sIL \"https://github.com/sapics/ip-location-db/releases/download/latest/geolite2-asn.mmdb\")"
     ],
     "additionalDirectories": [
       "\\tmp"

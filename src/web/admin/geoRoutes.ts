@@ -57,7 +57,9 @@ geoRouter.post(
       await refreshGeoData();
       const status = getGeoStoreStatus();
       res.redirect(
-        `/admin/geo?${flashQuery(`GeoIP/VPN data refreshed — ${status.vpnRangeCount} VPN ranges loaded.`)}`,
+        `/admin/geo?${flashQuery(
+          `GeoIP/VPN data refreshed — ${status.vpnRangeCount} VPN ranges, ${status.vpnAsnLoaded ? status.vpnAsnCount : "no"} VPN ASNs loaded.`,
+        )}`,
       );
     } catch (err) {
       console.error("Manual GeoIP data refresh failed", err);

@@ -17,7 +17,8 @@ export function geoPage(user: AdminUser, status: GeoStoreStatus, flash?: string,
           <tr><td>Loaded</td><td>${status.loaded ? '<span class="badge badge-verified">yes</span>' : '<span class="badge badge-unverified">no</span>'}</td></tr>
           <tr><td>Last loaded</td><td>${formatDate(status.loadedAt)}</td></tr>
           <tr><td>Country database built</td><td>${formatDate(status.countryDbBuiltAt)}</td></tr>
-          <tr><td>VPN network ranges</td><td>${status.vpnRangeCount.toLocaleString()}</td></tr>
+          <tr><td>VPN network ranges (IPv4)</td><td>${status.vpnRangeCount.toLocaleString()}</td></tr>
+          <tr><td>VPN ASNs (IPv4 + IPv6)</td><td>${status.vpnAsnLoaded ? status.vpnAsnCount.toLocaleString() : '<span class="badge badge-unverified">unavailable</span>'}</td></tr>
         </tbody>
       </table>
       <div class="hint">Refreshed automatically every 12h from open-source sources (see README). Use the button below to fetch the latest data immediately.</div>
