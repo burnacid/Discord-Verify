@@ -15,26 +15,48 @@ document.addEventListener("submit", (event) => {
   button.textContent = loadingText;
 });
 
-// Mobile hamburger menu: toggles the collapsible nav panel. The nav is a
-// normal flex row on wide viewports (CSS media query) — this only matters
-// below the mobile breakpoint.
+// Highlights the sidebar link for the current page. Done client-side so
+// every admin route's render call doesn't need to thread the current path
+// through to renderAdminPage() — the nav markup is identical everywhere.
+(() => {
+  const links = document.querySelectorAll("#primaryNav .nav-link");
+  const path = location.pathname;
+  let best = null;
+
+  for (const link of links) {
+    const href = link.getAttribute("href");
+    if (!href || !href.startsWith("/")) continue; // skip the external Health link
+    const matches = href === "/admin" ? path === "/admin" : path === href || path.startsWith(href + "/");
+    if (matches && (!best || href.length > best.getAttribute("href").length)) {
+      best = link;
+    }
+  }
+
+  if (best) best.classList.add("active");
+})();
+
+// Mobile sidebar drawer: toggles open/closed via the hamburger button, a
+// click on the backdrop, the Escape key, or navigating (clicking a link) —
+// the sidebar is a fixed off-canvas panel only below the mobile breakpoint
+// (CSS media query); on wide viewports it's always visible and this is inert.
 (() => {
   const toggle = document.getElementById("navToggle");
-  const nav = document.getElementById("primaryNav");
-  if (!toggle || !nav) return;
+  const sidebar = document.getElementById("sidebar");
+  const backdrop = document.getElementById("sidebarBackdrop");
+  if (!toggle || !sidebar || !backdrop) return;
 
-  toggle.addEventListener("click", () => {
-    const isOpen = nav.classList.toggle("open");
-    toggle.setAttribute("aria-expanded", String(isOpen));
+  function setOpen(open) {
+    sidebar.classList.toggle("open", open);
+    backdrop.classList.toggle("open", open);
+    toggle.setAttribute("aria-expanded", String(open));
+  }
+
+  toggle.addEventListener("click", () => setOpen(!sidebar.classList.contains("open")));
+  backdrop.addEventListener("click", () => setOpen(false));
+  document.addEventListener("keydown", (event) => {
+    if (event.key === "Escape") setOpen(false);
   });
-
-  // Close the menu after navigating (clicking a link) so it doesn't stay
-  // open when the next page loads with a fresh, collapsed nav anyway —
-  // mainly relevant if the browser restores scroll/DOM state on back-nav.
-  nav.addEventListener("click", (event) => {
-    if (event.target instanceof HTMLAnchorElement) {
-      nav.classList.remove("open");
-      toggle.setAttribute("aria-expanded", "false");
-    }
+  sidebar.addEventListener("click", (event) => {
+    if (event.target instanceof HTMLAnchorElement) setOpen(false);
   });
 })();

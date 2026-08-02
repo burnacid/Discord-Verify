@@ -1,33 +1,17 @@
 {
   "permissions": {
     "allow": [
-      "Bash(npm -v)",
-      "Bash(npm install *)",
-      "Bash(npx prisma *)",
-      "Bash(npx tsc *)",
-      "Bash(npm run *)",
-      "Bash(tasklist //FI \"IMAGENAME eq node.exe\")",
-      "WebFetch(domain:ipapi.co)",
-      "Bash(tasklist)",
-      "Bash(echo \"exit code: $?\")",
-      "Bash(echo \"exit: $?\")",
+      "Bash(npm *)",
+      "Bash(npx *)",
       "Bash(gh api *)",
-      "WebFetch(domain:github.com)",
-      "Bash(curl -sI https://github.com/sapics/ip-location-db/releases/download/latest/geolite2-country.mmdb)",
-      "Bash(curl -sI https://raw.githubusercontent.com/X4BNet/lists_vpn/main/output/vpn/ipv4.txt)",
-      "Bash(curl -sI https://raw.githubusercontent.com/X4BNet/lists_vpn/main/output/vpn/ipv6.txt)",
-      "Bash(curl -s https://raw.githubusercontent.com/X4BNet/lists_vpn/main/output/vpn/ipv4.txt)",
-      "Bash(npm view *)",
+      "Bash(curl *github.com*)",
+      "Bash(curl *githubusercontent.com*)",
       "Bash(tar xzf *)",
-      "Read(//tmp/**)",
-      "Bash(npm pack *)",
-      "Bash(xargs -I{} sh -c 'echo ==={}===; cat {}')",
-      "Bash(rm -rf /tmp/mmcheck)",
-      "Bash(npx tsx *)",
-      "Bash(curl -s \"https://api.github.com/repos/X4BNet/lists_vpn/contents/input/vpn/ips\")",
-      "Bash(curl -sI \"https://github.com/sapics/ip-location-db/releases/download/latest/asn.mmdb\")",
-      "Bash(curl -s \"https://api.github.com/repos/sapics/ip-location-db/releases/tags/latest\")",
-      "Bash(curl -sIL \"https://github.com/sapics/ip-location-db/releases/download/latest/geolite2-asn.mmdb\")"
+      "Bash(tasklist*)",
+      "Bash(echo *)",
+      "WebFetch(domain:github.com)",
+      "WebFetch(domain:ipapi.co)",
+      "Read(//tmp/**)"
     ],
     "additionalDirectories": [
       "\\tmp"
