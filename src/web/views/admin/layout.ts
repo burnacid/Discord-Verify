@@ -1,4 +1,5 @@
 import { adminModules } from "../../admin/moduleRegistry.js";
+import { ICONS } from "./icons.js";
 
 export interface AdminUser {
   discordId: string;
@@ -6,6 +7,23 @@ export interface AdminUser {
 }
 
 export type FlashKind = "success" | "error" | "warning";
+
+function escapeHtml(value: string): string {
+  return value
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;")
+    .replace(/"/g, "&quot;");
+}
+
+function icon(paths: string): string {
+  return `<svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">${paths}</svg>`;
+}
+
+function navLink(href: string, label: string, iconPaths: string, external = false): string {
+  const attrs = external ? ' target="_blank" rel="noopener"' : "";
+  return `<a class="nav-link" href="${href}"${attrs}>${icon(iconPaths)}<span>${label}</span></a>`;
+}
 
 export function renderAdminPage(
   title: string,
@@ -15,6 +33,7 @@ export function renderAdminPage(
   flashKind: FlashKind = "success",
 ): string {
   const flashClass = flashKind === "error" ? "flash-error" : flashKind === "warning" ? "flash-warning" : "flash";
+  const initial = user.username.trim().charAt(0).toUpperCase() || "?";
 
   return `<!doctype html>
 <html lang="en">
@@ -26,29 +45,48 @@ export function renderAdminPage(
     <link rel="stylesheet" href="/assets/theme.css" />
     <script src="/assets/admin.js" defer></script>
   </head>
-  <body>
-    <header>
-      <div class="brand">Discord Verify — Admin</div>
-      <button class="nav-toggle" id="navToggle" type="button" aria-expanded="false" aria-controls="primaryNav" aria-label="Toggle menu">
-        <span></span><span></span><span></span>
-      </button>
-      <nav id="primaryNav">
-        <div class="nav-links">
-          <a href="/admin">Dashboard</a>
-          <a href="/admin/members">Members</a>
-          ${adminModules.map((m) => `<a href="${m.navPath}">${m.label}</a>`).join("")}
-          <a href="/health" target="_blank" rel="noopener">Health</a>
+  <body class="admin">
+    <div class="admin-shell">
+      <aside class="sidebar" id="sidebar">
+        <div class="sidebar-brand">
+          <span class="brand-mark">DV</span>
+          <span class="brand-text">Discord Verify</span>
         </div>
-        <div class="nav-account">
-          <span class="user">${user.username}</span>
-          <a href="/admin/logout">Log out</a>
-        </div>
-      </nav>
-    </header>
-    <main>
-      ${flash ? `<div class="${flashClass}" role="status" aria-live="polite">${flash}</div>` : ""}
-      ${bodyHtml}
-    </main>
+        <nav class="sidebar-nav" id="primaryNav">
+          <div class="nav-group">
+            ${navLink("/admin", "Dashboard", ICONS.dashboard)}
+            ${navLink("/admin/members", "Members", ICONS.users)}
+          </div>
+          ${
+            adminModules.length > 0
+              ? `<div class="nav-label">Modules</div>
+                 <div class="nav-group">${adminModules.map((m) => navLink(m.navPath, escapeHtml(m.label), m.icon)).join("")}</div>`
+              : ""
+          }
+          <div class="nav-group nav-group-bottom">
+            ${navLink("/health", "Health", ICONS.activity, true)}
+          </div>
+        </nav>
+      </aside>
+      <div class="sidebar-backdrop" id="sidebarBackdrop"></div>
+      <div class="admin-main">
+        <header class="topbar">
+          <button class="nav-toggle" id="navToggle" type="button" aria-expanded="false" aria-controls="sidebar" aria-label="Toggle menu">
+            <span></span><span></span><span></span>
+          </button>
+          <div class="topbar-spacer"></div>
+          <div class="account-chip">
+            <span class="avatar">${escapeHtml(initial)}</span>
+            <span class="user">${escapeHtml(user.username)}</span>
+            <a href="/admin/logout" class="icon-btn" title="Log out" aria-label="Log out">${icon(ICONS.logout)}</a>
+          </div>
+        </header>
+        <main>
+          ${flash ? `<div class="${flashClass}" role="status" aria-live="polite">${flash}</div>` : ""}
+          ${bodyHtml}
+        </main>
+      </div>
+    </div>
   </body>
 </html>`;
 }
