@@ -130,6 +130,16 @@ model WelcomeSettings {
   updatedAt DateTime @updatedAt
 }
 
+// Singleton row (id always 1) — configures a channel that, when a
+// not-yet-verified member posts in it, gets sent a verification link by DM.
+// Same pattern as WelcomeSettings.
+model VerifyPromptSettings {
+  id        Int      @id @default(1)
+  enabled   Boolean  @default(false)
+  channelId String?
+  updatedAt DateTime @updatedAt
+}
+
 model EventSource {
   id              String    @id @default(uuid())
   name            String

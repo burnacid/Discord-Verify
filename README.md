@@ -127,6 +127,15 @@ at their next login.
   stored in the database (`Settings` table) — `.env`'s `ALLOWED_COUNTRIES`,
   `MAX_FRAUD_SCORE`, and `SEND_JOIN_DM` are only used to seed that row the
   very first time the app boots against a fresh database.
+- **Verify on Post** (`/admin/verify-prompt`): configure a channel where any
+  not-yet-verified member who posts gets sent a verification link by DM
+  automatically (reusing an existing link — e.g. from a join DM — instead of
+  minting a new one; falls back to an in-channel reply if their DMs are
+  closed). Throttled per member (10 min) rather than per-message, so posting
+  several messages in a row doesn't spam DMs (`src/bot/verifyPrompt.ts`).
+  Requires the (non-privileged) `GuildMessages` gateway intent — see
+  `src/bot/client.ts` — since without it the bot never receives message
+  events for guild channels at all, only DMs.
 - **Restart bot** (dashboard, under "System"): triggers the same graceful
   shutdown used for `SIGTERM`/`SIGINT` — closes the DB connection and logs
   the bot out cleanly, then exits and relies on the process manager's
