@@ -4,6 +4,7 @@ import { jtcRouter } from "./jtcRoutes.js";
 import { welcomeRouter } from "./welcomeRoutes.js";
 import { eventsRouter } from "./eventsRoutes.js";
 import { geoRouter } from "./geoRoutes.js";
+import { verifyPromptRouter } from "./verifyPromptRoutes.js";
 import { ICONS } from "../views/admin/icons.js";
 
 registerAdminModule({ key: "rss", label: "RSS Feeds", navPath: "/admin/rss", router: rssRouter, icon: ICONS.rss });
@@ -23,4 +24,11 @@ registerAdminModule({
   icon: ICONS.calendar,
 });
 registerAdminModule({ key: "geo", label: "GeoIP / VPN", navPath: "/admin/geo", router: geoRouter, icon: ICONS.globe });
+registerAdminModule({
+  key: "verifyPrompt",
+  label: "Verify on Post",
+  navPath: "/admin/verify-prompt",
+  router: verifyPromptRouter,
+  icon: ICONS.checkCircle,
+});
 // Next module: registerAdminModule({ key: "foo", label: "Foo", navPath: "/admin/foo", router: fooRouter, icon: ICONS.dashboard });
