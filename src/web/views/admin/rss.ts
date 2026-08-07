@@ -25,12 +25,15 @@ function channelLabel(channelId: string, channels: GuildTextChannel[]): string {
 
 function feedRow(feed: RssFeed, channels: GuildTextChannel[]): string {
   const lastPosted = feed.lastPostedAt ? feed.lastPostedAt.toISOString().slice(0, 16).replace("T", " ") : "—";
+  const statusBadge = feed.lastError
+    ? `<span class="badge badge-rejected" title="${escapeHtml(feed.lastError)}">error</span>`
+    : `<span class="badge ${feed.enabled ? "badge-verified" : "badge-unverified"}">${feed.enabled ? "enabled" : "disabled"}</span>`;
 
   return `<tr>
     <td>${escapeHtml(feed.name)}</td>
     <td><code>${escapeHtml(feed.feedUrl)}</code></td>
     <td>${channelLabel(feed.channelId, channels)}</td>
-    <td><span class="badge ${feed.enabled ? "badge-verified" : "badge-unverified"}">${feed.enabled ? "enabled" : "disabled"}</span></td>
+    <td>${statusBadge}</td>
     <td>${lastPosted}</td>
     <td class="actions">
       <a class="btn btn-secondary" href="/admin/rss/${feed.id}/test">Test</a>

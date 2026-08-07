@@ -68,13 +68,17 @@ function sourceRow(source: EventSource, activeCount: number, channels: GuildText
     ? channelLabel(source.messageChannelId, channels)
     : `<span class="hint">— off —</span>`;
 
+  const statusBadge = source.lastError
+    ? `<span class="badge badge-rejected" title="${escapeHtml(source.lastError)}">error</span>`
+    : `<span class="badge ${source.enabled ? "badge-verified" : "badge-unverified"}">${source.enabled ? "enabled" : "disabled"}</span>`;
+
   return `<tr>
     <td>${escapeHtml(source.name)}</td>
     <td>${escapeHtml(providerLabel(source.provider))}</td>
     <td><code>${escapeHtml(source.apiUrl)}</code></td>
     <td>${nameFilterLabel(source)}</td>
     <td>${messageLabel}</td>
-    <td><span class="badge ${source.enabled ? "badge-verified" : "badge-unverified"}">${source.enabled ? "enabled" : "disabled"}</span></td>
+    <td>${statusBadge}</td>
     <td>${activeCount}</td>
     <td>${lastSynced}</td>
     <td class="actions">

@@ -17,6 +17,10 @@ export const commands = [
     .addUserOption((opt) =>
       opt.setName("user").setDescription("The member to unverify").setRequired(true),
     ),
+  new SlashCommandBuilder()
+    .setName("review-queue")
+    .setDescription("List members pending manual verification review")
+    .setDefaultMemberPermissions(PermissionFlagsBits.ManageRoles),
 ].map((c) => c.toJSON());
 
 export async function registerCommands(): Promise<void> {

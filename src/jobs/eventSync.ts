@@ -464,7 +464,15 @@ export async function syncEventSource(source: EventSource): Promise<void> {
     }
   }
 
-  await prisma.eventSource.update({ where: { id: source.id }, data: { lastSyncedAt: new Date() } });
+  await prisma.eventSource.update({ where: { id: source.id }, data: { lastSyncedAt: new Date(), lastError: null } });
+}
+
+// lastSyncedAt only advances on success (set at the end of syncEventSource
+// above), so staleness alone is already a usable signal — this adds a
+// human-readable reason instead of just "it's been a while".
+function eventSyncErrorMessage(err: unknown): string {
+  const message = err instanceof Error ? err.message : String(err);
+  return message.length > 500 ? message.slice(0, 500) + "…" : message;
 }
 
 export async function syncAllEventSources(): Promise<void> {
@@ -474,6 +482,9 @@ export async function syncAllEventSources(): Promise<void> {
       await syncEventSource(source);
     } catch (err) {
       console.error(`Event sync failed for source "${source.name}" (${source.id})`, err);
+      await prisma.eventSource
+        .update({ where: { id: source.id }, data: { lastError: eventSyncErrorMessage(err) } })
+        .catch(() => {});
     }
   }
 }

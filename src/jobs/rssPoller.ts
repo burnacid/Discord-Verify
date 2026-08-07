@@ -11,6 +11,14 @@ export async function getDefaultTemplate(): Promise<string> {
   return settings?.defaultTemplate ?? DEFAULT_RSS_TEMPLATE;
 }
 
+// Distinct from lastPostedAt (which only advances when a new item is
+// actually found/posted) — set on every poll attempt so a quiet-but-healthy
+// feed and a broken one no longer look identical in the admin UI.
+function errorMessage(err: unknown): string {
+  const message = err instanceof Error ? err.message : String(err);
+  return message.length > 500 ? message.slice(0, 500) + "…" : message;
+}
+
 export async function pollRssFeeds(): Promise<void> {
   const [feeds, defaultTemplate] = await Promise.all([
     prisma.rssFeed.findMany({ where: { enabled: true } }),
@@ -19,8 +27,12 @@ export async function pollRssFeeds(): Promise<void> {
   for (const feed of feeds) {
     try {
       await pollOneFeed(feed, defaultTemplate);
+      await prisma.rssFeed.update({ where: { id: feed.id }, data: { lastCheckedAt: new Date(), lastError: null } });
     } catch (err) {
       console.error(`RSS poll failed for feed "${feed.name}" (${feed.id})`, err);
+      await prisma.rssFeed
+        .update({ where: { id: feed.id }, data: { lastCheckedAt: new Date(), lastError: errorMessage(err) } })
+        .catch(() => {});
     }
   }
 }

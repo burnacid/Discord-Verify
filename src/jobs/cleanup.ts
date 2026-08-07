@@ -1,4 +1,5 @@
 import { prisma } from "../db.js";
+import { sweepEmptyJtcChannels } from "../bot/events/voiceStateUpdate.js";
 
 export async function cleanupExpiredRecords(): Promise<void> {
   const now = new Date();
@@ -13,6 +14,12 @@ export async function cleanupExpiredRecords(): Promise<void> {
       `Cleanup: removed ${tokens.count} expired verification token(s), ${invites.count} expired invite link(s)`,
     );
   }
+
+  // Self-heals JtcChannel rows for voice channels deleted outside the bot's
+  // control (e.g. manually by a mod) — previously only ran once at startup
+  // (src/index.ts), so a mid-session deletion would linger tracked until
+  // the next restart.
+  await sweepEmptyJtcChannels().catch((err) => console.error("JTC sweep during cleanup failed", err));
 }
 
 export function startCleanupJob(intervalMs: number): NodeJS.Timeout {

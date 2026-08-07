@@ -39,8 +39,11 @@ queue.
   assigns the `Verified` role. Denying it DMs the member and **kicks them
   from the server**, unless they have the **Administrator** permission (in
   which case they're just marked denied, not removed). Either way, the
-  review-queue message is deleted from `DISCORD_MOD_REVIEW_CHANNEL_ID`
-  afterward to keep the channel clean.
+  original embed in `DISCORD_MOD_REVIEW_CHANNEL_ID` is edited in place —
+  buttons removed, a "Resolved" field added showing who decided and (on
+  deny) their optional note — instead of being deleted, so the channel keeps
+  a visible record. Denying from Discord pops up a modal for that note;
+  denying from the web panel uses a plain textarea next to the Deny button.
 
 Posting access is controlled by denying **Send Messages** for `@everyone`
 at the channel/category level and granting it back via the `Verified` role
@@ -51,11 +54,11 @@ at the channel/category level and granting it back via the `Verified` role
 Set `DISCORD_AUDIT_LOG_CHANNEL_ID` to get a permanent, read-only record of
 every verification decision — `/verify-user`, `/unverify-user`, and each
 review-queue approve/deny (including whether a denied member was kicked or
-spared for being an admin). This is the only lasting trace of a decision in
-Discord, since the review-queue embed itself gets deleted afterward; the
-database also keeps `reviewedBy`/`reviewedAt` on `ReviewQueueEntry` if you
-need to query it directly. Optional — if unset, decisions simply aren't
-logged to a channel.
+spared for being an admin, and any mod note). The database also keeps
+`reviewedBy`/`reviewedAt`/`reviewNote` on `ReviewQueueEntry` if you need to
+query it directly, and the resolved review-queue embed itself stays visible
+in `DISCORD_MOD_REVIEW_CHANNEL_ID`. Optional — if unset, decisions simply
+aren't logged to a channel.
 
 ### Health check
 
@@ -75,7 +78,10 @@ Every hour (and once on startup), expired `VerificationToken` and
 `InviteLink` rows are deleted from the database so it doesn't grow
 unbounded. This only removes rows that are already unusable (past their
 `expiresAt`) — verification history (`Member`, `ReviewQueueEntry`) is never
-touched. See `src/jobs/cleanup.ts`.
+touched. The same interval also re-runs the Join-to-Create empty-channel
+sweep (previously only at startup), so a voice channel deleted manually
+mid-session self-heals instead of staying tracked until the next restart.
+See `src/jobs/cleanup.ts`.
 
 ### Rate limiting & 404s
 
@@ -93,10 +99,14 @@ endpoints expect). See `src/web/rateLimit.ts`.
   `Verified` role, sets `Member.status = verified` in the DB).
 - **`/unverify-user <user>`** — manually revokes a member's verification
   (removes the `Verified` role, sets `Member.status = unverified`).
+- **`/review-queue`** — ephemeral list of members currently pending manual
+  review (up to 15, with a "+N more" note beyond that) — a quick check from
+  Discord without opening `/admin` or scrolling the mod-review channel.
 
-Both require the **Manage Roles** permission (Discord enforces this at the
-command level) and work regardless of how the member was previously
-verified — useful for correcting mistakes or handling manual reports.
+All three require the **Manage Roles** permission (Discord enforces this at
+the command level). `/verify-user`/`/unverify-user` work regardless of how
+the member was previously verified — useful for correcting mistakes or
+handling manual reports.
 
 ### Admin web panel
 
@@ -110,12 +120,16 @@ at their next login.
   OAuth2 consent screen (`identify` scope only — just enough to know who
   logged in) and back to `/admin/callback`. No password is stored anywhere;
   Discord is the only identity provider.
-- **Dashboard**: counts of verified/pending/rejected/unverified members, plus
-  the full pending review queue with **Approve**/**Deny** buttons — a web
-  equivalent of the Discord embed buttons, using the exact same underlying
-  logic (`src/bot/adminActions.ts`) so behavior never diverges between
-  Discord and the web (role assignment, DM, kick-unless-admin, audit log —
-  all identical either way).
+- **Dashboard**: counts of verified/pending/rejected/unverified members plus
+  what % of the live Discord guild is verified, the full pending review
+  queue with **Approve**/**Deny** buttons (Deny has an optional note
+  textarea) — a web equivalent of the Discord embed buttons/modal, using the
+  exact same underlying logic (`src/bot/adminActions.ts`) so behavior never
+  diverges between Discord and the web (role assignment, DM, kick-unless-
+  admin, audit log — all identical either way). A "System" section flags
+  stale/unloaded GeoIP data and any RSS feeds or event sources currently
+  failing to poll/sync, each linking to the relevant admin page — only shown
+  when there's actually something to flag.
 - **Members** (`/admin/members`): search by Discord ID or username (matches
   guild members via Discord's search API), see their status/country/last
   IP/verified-at, and **Verify**/**Unverify** them — the web equivalent of
