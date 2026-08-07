@@ -2,6 +2,7 @@ import { renderAdminPage } from "./layout.js";
 import type { AdminUser, FlashKind } from "./layout.js";
 import type { RssFeed } from "@prisma/client";
 import type { GuildTextChannel } from "../../../bot/channelLookup.js";
+import { channelOptions } from "./channelOptions.js";
 
 function escapeHtml(value: string): string {
   return value
@@ -11,24 +12,24 @@ function escapeHtml(value: string): string {
     .replace(/"/g, "&quot;");
 }
 
-function channelOptions(channels: GuildTextChannel[], selectedId?: string): string {
-  return channels
-    .map((c) => `<option value="${c.id}" ${c.id === selectedId ? "selected" : ""}>#${escapeHtml(c.name)}</option>`)
-    .join("");
-}
-
 const PLACEHOLDER_HINT =
   "Placeholders: <code>{{title}}</code> <code>{{link}}</code> <code>{{description}}</code> <code>{{author}}</code> <code>{{date}}</code> <code>{{feedName}}</code>";
 
+function channelLabel(channelId: string, channels: GuildTextChannel[]): string {
+  const channel = channels.find((c) => c.id === channelId);
+  if (!channel) return `<span class="hint">${escapeHtml(channelId)}</span>`;
+  return channel.category
+    ? `<span class="hint">${escapeHtml(channel.category)} /</span> #${escapeHtml(channel.name)}`
+    : `#${escapeHtml(channel.name)}`;
+}
+
 function feedRow(feed: RssFeed, channels: GuildTextChannel[]): string {
-  const channel = channels.find((c) => c.id === feed.channelId);
-  const channelLabel = channel ? `#${escapeHtml(channel.name)}` : `<span class="hint">${escapeHtml(feed.channelId)}</span>`;
   const lastPosted = feed.lastPostedAt ? feed.lastPostedAt.toISOString().slice(0, 16).replace("T", " ") : "—";
 
   return `<tr>
     <td>${escapeHtml(feed.name)}</td>
     <td><code>${escapeHtml(feed.feedUrl)}</code></td>
-    <td>${channelLabel}</td>
+    <td>${channelLabel(feed.channelId, channels)}</td>
     <td><span class="badge ${feed.enabled ? "badge-verified" : "badge-unverified"}">${feed.enabled ? "enabled" : "disabled"}</span></td>
     <td>${lastPosted}</td>
     <td class="actions">
@@ -53,7 +54,7 @@ function feedRow(feed: RssFeed, channels: GuildTextChannel[]): string {
           <input type="text" id="feedUrl-${feed.id}" name="feedUrl" value="${escapeHtml(feed.feedUrl)}" />
 
           <label for="channelId-${feed.id}">Channel</label>
-          <select id="channelId-${feed.id}" name="channelId">${channelOptions(channels, feed.channelId)}</select>
+          <select id="channelId-${feed.id}" name="channelId" data-channel-picker>${channelOptions(channels, feed.channelId, "#")}</select>
 
           <label for="template-${feed.id}">Post template (leave blank to use the default template)</label>
           <textarea id="template-${feed.id}" name="template" placeholder="Uses the default template below">${escapeHtml(feed.template ?? "")}</textarea>
@@ -113,7 +114,7 @@ export function rssPage(
         <input type="text" id="feedUrl" name="feedUrl" placeholder="https://example.com/feed.xml" required />
 
         <label for="channelId">Channel</label>
-        <select id="channelId" name="channelId" required>${channelOptions(channels)}</select>
+        <select id="channelId" name="channelId" required data-channel-picker>${channelOptions(channels, undefined, "#")}</select>
         <div class="hint">New items from this feed will be posted here. The feed's current items are not backfilled — only items published after adding it are posted.</div>
 
         <label for="template">Post template (optional)</label>

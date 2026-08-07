@@ -2,6 +2,7 @@ import { renderAdminPage } from "./layout.js";
 import type { AdminUser, FlashKind } from "./layout.js";
 import type { JtcTrigger } from "@prisma/client";
 import type { GuildVoiceChannel } from "../../../bot/channelLookup.js";
+import { channelOptions } from "./channelOptions.js";
 
 function escapeHtml(value: string): string {
   return value
@@ -11,17 +12,18 @@ function escapeHtml(value: string): string {
     .replace(/"/g, "&quot;");
 }
 
-function channelOptions(channels: GuildVoiceChannel[]): string {
-  return channels.map((c) => `<option value="${c.id}">${escapeHtml(c.name)}</option>`).join("");
+function channelLabel(channelId: string, channels: GuildVoiceChannel[]): string {
+  const channel = channels.find((c) => c.id === channelId);
+  if (!channel) return `<span class="hint">${escapeHtml(channelId)}</span>`;
+  return channel.category
+    ? `<span class="hint">${escapeHtml(channel.category)} /</span> ${escapeHtml(channel.name)}`
+    : escapeHtml(channel.name);
 }
 
 function triggerRow(trigger: JtcTrigger, activeCount: number, channels: GuildVoiceChannel[]): string {
-  const channel = channels.find((c) => c.id === trigger.channelId);
-  const channelLabel = channel ? escapeHtml(channel.name) : `<span class="hint">${escapeHtml(trigger.channelId)}</span>`;
-
   return `<tr>
     <td>${escapeHtml(trigger.name)}</td>
-    <td>${channelLabel}</td>
+    <td>${channelLabel(trigger.channelId, channels)}</td>
     <td>${activeCount}</td>
     <td class="actions">
       <form class="inline" method="post" action="/admin/jtc/${trigger.id}/delete">
@@ -66,7 +68,7 @@ export function jtcPage(
               <div class="hint">Spawned channels are named "{name} #N", e.g. "Gaming #1".</div>
 
               <label for="channelId">Trigger channel</label>
-              <select id="channelId" name="channelId" required>${channelOptions(availableChannels)}</select>
+              <select id="channelId" name="channelId" required data-channel-picker>${channelOptions(availableChannels)}</select>
               <div class="hint">The voice channel members join to spawn a new channel.</div>
 
               <button type="submit" class="btn-primary mt-lg">Add trigger</button>

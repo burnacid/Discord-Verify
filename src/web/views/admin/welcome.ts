@@ -2,6 +2,7 @@ import { renderAdminPage } from "./layout.js";
 import type { AdminUser, FlashKind } from "./layout.js";
 import type { WelcomeSettingsView } from "../../../bot/welcomeMessage.js";
 import type { GuildTextChannel } from "../../../bot/channelLookup.js";
+import { channelOptions } from "./channelOptions.js";
 
 function escapeHtml(value: string): string {
   return value
@@ -9,12 +10,6 @@ function escapeHtml(value: string): string {
     .replace(/</g, "&lt;")
     .replace(/>/g, "&gt;")
     .replace(/"/g, "&quot;");
-}
-
-function channelOptions(channels: GuildTextChannel[], selectedId?: string | null): string {
-  return channels
-    .map((c) => `<option value="${c.id}" ${c.id === selectedId ? "selected" : ""}>#${escapeHtml(c.name)}</option>`)
-    .join("");
 }
 
 const PLACEHOLDER_HINT =
@@ -40,9 +35,9 @@ export function welcomePage(
         </div>
 
         <label for="channelId">Channel</label>
-        <select id="channelId" name="channelId">
+        <select id="channelId" name="channelId" data-channel-picker>
           <option value="">— none —</option>
-          ${channelOptions(channels, settings.channelId)}
+          ${channelOptions(channels, settings.channelId, "#")}
         </select>
 
         <label for="template">Message template</label>
