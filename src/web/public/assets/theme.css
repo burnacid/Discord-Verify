@@ -433,6 +433,16 @@ select {
   color: var(--text);
   font-size: 0.9rem;
 }
+select {
+  appearance: none;
+  -webkit-appearance: none;
+  padding-right: 34px;
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%23b5bac1' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpolyline points='6 9 12 15 18 9'/%3E%3C/svg%3E");
+  background-repeat: no-repeat;
+  background-position: right 10px center;
+  background-size: 16px;
+  cursor: pointer;
+}
 textarea {
   width: 100%;
   max-width: 500px;
@@ -469,6 +479,156 @@ code {
   padding: 2px 6px;
   border-radius: 4px;
   font-size: 0.85em;
+}
+
+/* ---- Channel picker (see admin.js buildChannelPicker) ----
+   A searchable, categorized dropdown built on top of a hidden native
+   <select data-channel-picker> — the select stays the real form field and
+   the no-JS fallback; this is a pure progressive-enhancement layer. */
+.channel-picker {
+  position: relative;
+  width: 100%;
+  max-width: 400px;
+}
+.channel-picker-trigger {
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  width: 100%;
+  padding: 8px 12px;
+  border-radius: var(--radius-sm);
+  border: 1px solid var(--border);
+  background: var(--bg);
+  color: var(--text);
+  font-size: 0.9rem;
+  font-family: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+.channel-picker-trigger:hover {
+  border-color: var(--surface-alt);
+}
+.channel-picker-trigger[aria-expanded="true"] {
+  border-color: var(--accent);
+}
+.channel-picker-icon {
+  flex-shrink: 0;
+  color: var(--text-faint);
+}
+.channel-picker-value {
+  flex: 1;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.channel-picker-value.placeholder {
+  color: var(--text-faint);
+}
+.channel-picker-chevron {
+  flex-shrink: 0;
+  color: var(--text-faint);
+  transition: transform 0.15s ease;
+}
+.channel-picker-trigger[aria-expanded="true"] .channel-picker-chevron {
+  transform: rotate(180deg);
+}
+
+.channel-picker-menu {
+  /* `display: none` by default so the `hidden` attribute admin.js toggles
+     actually hides this — an unconditional `display: flex` here would
+     override the UA [hidden] rule (author styles win over UA styles at
+     equal specificity), leaving the menu stuck visibly open. */
+  display: none;
+  position: absolute;
+  top: calc(100% + 6px);
+  left: 0;
+  right: 0;
+  z-index: 8;
+  flex-direction: column;
+  background: var(--surface);
+  border: 1px solid var(--surface-alt);
+  border-radius: var(--radius-md);
+  box-shadow: var(--shadow-md);
+  overflow: hidden;
+}
+.channel-picker-menu:not([hidden]) {
+  display: flex;
+}
+.channel-picker-search-wrap {
+  position: relative;
+  padding: 8px;
+  border-bottom: 1px solid var(--border);
+}
+.channel-picker-search-wrap svg {
+  position: absolute;
+  left: 20px;
+  top: 50%;
+  transform: translateY(-50%);
+  color: var(--text-faint);
+  pointer-events: none;
+}
+/* Scoped to .channel-picker-search-wrap (rather than just .channel-picker-search)
+   so this reliably outranks the generic `input[type="search"]` rule above —
+   an attribute+type selector is more specific than a single class, and would
+   otherwise win and reset padding-left, pushing the text under the icon. */
+.channel-picker-search-wrap .channel-picker-search {
+  width: 100%;
+  max-width: none;
+  padding: 7px 10px 7px 32px;
+  border-radius: var(--radius-sm);
+  border: 1px solid var(--border);
+  background: var(--bg);
+  color: var(--text);
+  font-size: 0.85rem;
+}
+.channel-picker-list {
+  max-height: 260px;
+  overflow-y: auto;
+  padding: 6px;
+}
+.channel-picker-group-label {
+  font-size: 0.68rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: var(--text-faint);
+  padding: 10px 8px 4px;
+}
+.channel-picker-option {
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  width: 100%;
+  padding: 7px 8px;
+  border: none;
+  border-radius: var(--radius-sm);
+  background: none;
+  color: var(--text);
+  font-size: 0.87rem;
+  font-family: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+.channel-picker-option svg {
+  flex-shrink: 0;
+  color: var(--text-faint);
+}
+.channel-picker-option:hover,
+.channel-picker-option.highlighted {
+  background: var(--surface-hover);
+}
+.channel-picker-option.active {
+  background: rgba(88, 101, 242, 0.16);
+  color: #fff;
+}
+.channel-picker-option.active svg {
+  color: var(--accent);
+}
+.channel-picker-empty {
+  padding: 14px 10px;
+  text-align: center;
+  font-size: 0.85rem;
+  color: var(--text-faint);
 }
 .badge {
   display: inline-block;

@@ -1,5 +1,5 @@
 import { adminModules } from "../../admin/moduleRegistry.js";
-import { ICONS } from "./icons.js";
+import { ICONS, icon } from "./icons.js";
 
 export interface AdminUser {
   discordId: string;
@@ -14,10 +14,6 @@ function escapeHtml(value: string): string {
     .replace(/</g, "&lt;")
     .replace(/>/g, "&gt;")
     .replace(/"/g, "&quot;");
-}
-
-function icon(paths: string): string {
-  return `<svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">${paths}</svg>`;
 }
 
 function navLink(href: string, label: string, iconPaths: string, external = false): string {

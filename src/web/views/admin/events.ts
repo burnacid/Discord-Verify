@@ -3,6 +3,7 @@ import type { AdminUser, FlashKind } from "./layout.js";
 import type { EventSource } from "@prisma/client";
 import type { GuildTextChannel, GuildRole } from "../../../bot/channelLookup.js";
 import { DEFAULT_EVENT_MESSAGE_TEMPLATE } from "../../../jobs/eventSync.js";
+import { channelOptions } from "./channelOptions.js";
 
 function escapeHtml(value: string): string {
   return value
@@ -44,10 +45,12 @@ function nameFilterLabel(source: EventSource): string {
   return `${escapeHtml(source.nameFilter)} <span class="hint">(${modeTag})</span>`;
 }
 
-function channelOptions(channels: GuildTextChannel[], selectedId?: string | null): string {
-  return channels
-    .map((c) => `<option value="${c.id}" ${c.id === selectedId ? "selected" : ""}>#${escapeHtml(c.name)}</option>`)
-    .join("");
+function channelLabel(channelId: string, channels: GuildTextChannel[]): string {
+  const channel = channels.find((c) => c.id === channelId);
+  if (!channel) return `<span class="hint">${escapeHtml(channelId)}</span>`;
+  return channel.category
+    ? `<span class="hint">${escapeHtml(channel.category)} /</span> #${escapeHtml(channel.name)}`
+    : `#${escapeHtml(channel.name)}`;
 }
 
 function roleOptions(roles: GuildRole[], selectedId?: string | null): string {
@@ -61,11 +64,8 @@ function sourceRow(source: EventSource, activeCount: number, channels: GuildText
     ? source.lastSyncedAt.toISOString().slice(0, 16).replace("T", " ")
     : "never";
 
-  const messageChannel = channels.find((c) => c.id === source.messageChannelId);
   const messageLabel = source.messageChannelId
-    ? messageChannel
-      ? `#${escapeHtml(messageChannel.name)}`
-      : `<span class="hint">${escapeHtml(source.messageChannelId)}</span>`
+    ? channelLabel(source.messageChannelId, channels)
     : `<span class="hint">— off —</span>`;
 
   return `<tr>
@@ -121,9 +121,9 @@ function sourceRow(source: EventSource, activeCount: number, channels: GuildText
           <div class="hint">Only used for "The Events Calendar" sources — only events starting within this many days are collected.</div>
 
           <label for="messageChannelId-${source.id}">Post a message per event to</label>
-          <select id="messageChannelId-${source.id}" name="messageChannelId">
+          <select id="messageChannelId-${source.id}" name="messageChannelId" data-channel-picker>
             <option value="">— off —</option>
-            ${channelOptions(channels, source.messageChannelId)}
+            ${channelOptions(channels, source.messageChannelId, "#")}
           </select>
           <div class="hint">Not every source needs this — leave as "— off —" to only create the Discord scheduled event.</div>
 
@@ -210,9 +210,9 @@ export function eventsPage(
         <div class="hint">Only used for The Events Calendar provider — only events starting within this many days are collected. Ignored for the Custom JSON API.</div>
 
         <label for="messageChannelId">Post a message per event to</label>
-        <select id="messageChannelId" name="messageChannelId">
+        <select id="messageChannelId" name="messageChannelId" data-channel-picker>
           <option value="">— off —</option>
-          ${channelOptions(channels)}
+          ${channelOptions(channels, undefined, "#")}
         </select>
         <div class="hint">Not every source needs this — leave as "— off —" to only create the Discord scheduled event.</div>
 
