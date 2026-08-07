@@ -678,6 +678,49 @@ code {
   font-size: 0.85rem;
   color: var(--text-faint);
 }
+
+/* ---- Textarea #/@ mention autocomplete (see admin.js buildMentionAutocomplete) ---- */
+.mention-autocomplete {
+  position: relative;
+}
+.mention-menu {
+  position: absolute;
+  top: calc(100% + 4px);
+  left: 0;
+  z-index: 8;
+  min-width: 220px;
+  max-width: 320px;
+  max-height: 220px;
+  overflow-y: auto;
+  background: var(--surface);
+  border: 1px solid var(--surface-alt);
+  border-radius: var(--radius-md);
+  box-shadow: var(--shadow-md);
+  padding: 6px;
+}
+.mention-option {
+  display: flex;
+  align-items: baseline;
+  gap: 6px;
+  width: 100%;
+  padding: 6px 8px;
+  border: none;
+  border-radius: var(--radius-sm);
+  background: none;
+  color: var(--text);
+  font-size: 0.85rem;
+  font-family: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+.mention-option .trigger {
+  color: var(--text-faint);
+  flex-shrink: 0;
+}
+.mention-option:hover,
+.mention-option.highlighted {
+  background: var(--surface-hover);
+}
 .badge {
   display: inline-block;
   padding: 2px 8px;
