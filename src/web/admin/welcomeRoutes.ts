@@ -2,7 +2,7 @@ import { Router } from "express";
 import { prisma } from "../../db.js";
 import { client } from "../../bot/client.js";
 import { config } from "../../config.js";
-import { fetchGuildTextChannels } from "../../bot/channelLookup.js";
+import { fetchGuildRoles, fetchGuildTextChannels } from "../../bot/channelLookup.js";
 import { getWelcomeSettings, renderWelcomeTemplate, DEFAULT_WELCOME_TEMPLATE } from "../../bot/welcomeMessage.js";
 import { asyncHandler } from "../asyncHandler.js";
 import { requireAdmin } from "./session.js";
@@ -23,8 +23,12 @@ welcomeRouter.get(
   asyncHandler(async (req, res) => {
     const flash = typeof req.query.flash === "string" ? req.query.flash : undefined;
     const flashKind = parseFlashKind(req.query.flashKind);
-    const [settings, channels] = await Promise.all([getWelcomeSettings(), fetchGuildTextChannels()]);
-    res.send(welcomePage(adminUser(req), settings, channels, flash, flashKind));
+    const [settings, channels, roles] = await Promise.all([
+      getWelcomeSettings(),
+      fetchGuildTextChannels(),
+      fetchGuildRoles(),
+    ]);
+    res.send(welcomePage(adminUser(req), settings, channels, roles, flash, flashKind));
   }),
 );
 

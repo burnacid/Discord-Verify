@@ -248,3 +248,136 @@ function buildChannelPicker(select) {
   wrapper.append(trigger, menu);
   select.insertAdjacentElement("afterend", wrapper);
 }
+
+// "#"/"@" autocomplete for a <textarea data-mention-autocomplete="dataId">,
+// where dataId points at a sibling <script type="application/json"> holding
+// { channels: string[], roles: string[] } — matches Discord's own composer
+// suggesting channels/roles as you type. Simplified vs. Discord's version:
+// the dropdown anchors under the whole textarea rather than tracking the
+// exact caret pixel position, which needs a full textarea-mirroring
+// technique that isn't worth the complexity for this admin-only tool.
+document.querySelectorAll("textarea[data-mention-autocomplete]").forEach(buildMentionAutocomplete);
+
+function buildMentionAutocomplete(textarea) {
+  const dataEl = document.getElementById(textarea.dataset.mentionAutocomplete);
+  if (!dataEl) return;
+
+  let data;
+  try {
+    data = JSON.parse(dataEl.textContent);
+  } catch {
+    return;
+  }
+
+  const wrapper = document.createElement("div");
+  wrapper.className = "mention-autocomplete";
+  textarea.insertAdjacentElement("beforebegin", wrapper);
+  wrapper.appendChild(textarea);
+
+  const menu = document.createElement("div");
+  menu.className = "mention-menu";
+  menu.hidden = true;
+  wrapper.appendChild(menu);
+
+  let active = null; // { trigger: "#"|"@", start: number, options: string[] }
+
+  function closeMenu() {
+    menu.hidden = true;
+    active = null;
+  }
+
+  function currentToken() {
+    const cursor = textarea.selectionStart;
+    if (cursor !== textarea.selectionEnd) return null; // no autocomplete over a selection
+
+    const text = textarea.value;
+    for (let i = cursor - 1; i >= 0; i--) {
+      const char = text[i];
+      if (char === "#" || char === "@") {
+        return { trigger: char, start: i, query: text.slice(i + 1, cursor) };
+      }
+      if (/\s/.test(char)) break;
+    }
+    return null;
+  }
+
+  function renderMenu(token) {
+    const source = token.trigger === "#" ? data.channels : data.roles;
+    const query = token.query.toLowerCase();
+    const options = (source || []).filter((name) => name.toLowerCase().includes(query)).slice(0, 8);
+
+    if (options.length === 0) {
+      closeMenu();
+      return;
+    }
+
+    active = { trigger: token.trigger, start: token.start, options };
+    menu.innerHTML = "";
+    options.forEach((name, index) => {
+      const button = document.createElement("button");
+      button.type = "button";
+      button.className = "mention-option" + (index === 0 ? " highlighted" : "");
+      button.innerHTML = `<span class="trigger">${token.trigger}</span><span></span>`;
+      button.querySelector("span:last-child").textContent = name;
+      button.addEventListener("mousedown", (event) => {
+        // mousedown (not click) fires before the textarea's blur, so the
+        // selection/cursor position used below is still the one from typing.
+        event.preventDefault();
+        chooseOption(name);
+      });
+      menu.appendChild(button);
+    });
+    menu.hidden = false;
+  }
+
+  function chooseOption(name) {
+    if (!active) return;
+    const text = textarea.value;
+    const cursor = textarea.selectionStart;
+    const insertion = `${active.trigger}${name} `;
+    textarea.value = text.slice(0, active.start) + insertion + text.slice(cursor);
+    const newCursor = active.start + insertion.length;
+    textarea.setSelectionRange(newCursor, newCursor);
+    textarea.dispatchEvent(new Event("input", { bubbles: true }));
+    textarea.focus();
+    closeMenu();
+  }
+
+  function refresh() {
+    const token = currentToken();
+    if (!token) {
+      closeMenu();
+      return;
+    }
+    renderMenu(token);
+  }
+
+  textarea.addEventListener("input", refresh);
+  textarea.addEventListener("click", refresh);
+  textarea.addEventListener("blur", () => setTimeout(closeMenu, 0));
+
+  textarea.addEventListener("keydown", (event) => {
+    if (menu.hidden || !active) return;
+
+    if (event.key === "Escape") {
+      closeMenu();
+      return;
+    }
+    if (event.key !== "ArrowDown" && event.key !== "ArrowUp" && event.key !== "Enter" && event.key !== "Tab") return;
+
+    const options = [...menu.querySelectorAll(".mention-option")];
+    const currentIndex = options.findIndex((el) => el.classList.contains("highlighted"));
+
+    if (event.key === "Enter" || event.key === "Tab") {
+      event.preventDefault();
+      chooseOption(active.options[currentIndex === -1 ? 0 : currentIndex]);
+      return;
+    }
+
+    event.preventDefault();
+    const delta = event.key === "ArrowDown" ? 1 : -1;
+    const nextIndex = (currentIndex + delta + options.length) % options.length;
+    options.forEach((el) => el.classList.remove("highlighted"));
+    options[nextIndex].classList.add("highlighted");
+  });
+}
