@@ -1,5 +1,6 @@
 import { renderAdminPage } from "./layout.js";
 import type { AdminUser, FlashKind } from "./layout.js";
+import { ICONS, icon } from "./icons.js";
 
 export interface MemberRow {
   discordId: string;
@@ -73,10 +74,19 @@ export function membersPage(
 
   const body = `
     <h1>Members</h1>
-    <form method="get" action="/admin/members" style="margin-bottom: 20px;">
-      <label for="q">Search by Discord ID or username</label>
-      <input type="search" id="q" name="q" value="${escapeHtml(query)}" placeholder="e.g. 123456789012345678 or a username" />
-      <button type="submit" class="btn-primary mt-sm">Search</button>
+    <form method="get" action="/admin/members" class="search-bar">
+      <div class="search-input-wrap">
+        ${icon(ICONS.search, 16)}
+        <input
+          type="search"
+          id="q"
+          name="q"
+          value="${escapeHtml(query)}"
+          placeholder="Search by Discord ID or username"
+          aria-label="Search by Discord ID or username"
+        />
+      </div>
+      <button type="submit" class="btn-primary">Search</button>
     </form>
 
     ${
