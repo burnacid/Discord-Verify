@@ -60,5 +60,16 @@ export async function createReviewEntry(
       .setStyle(ButtonStyle.Danger),
   );
 
-  await channel.send({ embeds: [embed], components: [row] });
+  const sent = await channel.send({ embeds: [embed], components: [row] });
+  await prisma.reviewQueueEntry.update({ where: { id: entry.id }, data: { messageId: sent.id } });
+}
+
+// Shared by the dashboard and the /review-queue command so both list the
+// same pending entries the same way.
+export function listPendingReviewEntries() {
+  return prisma.reviewQueueEntry.findMany({
+    where: { status: "pending" },
+    include: { member: true },
+    orderBy: { createdAt: "asc" },
+  });
 }

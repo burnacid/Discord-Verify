@@ -37,6 +37,8 @@ model Member {
 
   tokens      VerificationToken[]
   reviewQueue ReviewQueueEntry[]
+
+  @@index([status])
 }
 
 model VerificationToken {
@@ -89,6 +91,13 @@ model RssFeed {
   template     String?   @db.Text
   lastGuid     String?
   lastPostedAt DateTime?
+  // Set on every poll attempt (success or failure) — unlike lastPostedAt,
+  // which only advances when a new item is actually found/posted, so a
+  // quiet-but-healthy feed and a broken one used to look identical.
+  lastCheckedAt DateTime?
+  // Human-readable reason for the most recent poll failure; cleared on the
+  // next successful poll. Null = last poll (if any) succeeded.
+  lastError    String?   @db.Text
   createdAt    DateTime  @default(now())
   updatedAt    DateTime  @updatedAt
 }
@@ -154,7 +163,11 @@ model EventSource {
   messageTemplate String   @db.Text @default("{{description}}") // embed description body; title/fields are structured separately
   mentionRoleId   String? // role to @-mention when a new event message is first posted (null = no mention)
   enabled         Boolean   @default(true)
+  // Only advances on a successful sync (see syncEventSource in
+  // src/jobs/eventSync.ts), so staleness alone is already a usable signal —
+  // lastError adds a human-readable reason instead of just "it's been a while".
   lastSyncedAt    DateTime?
+  lastError       String?   @db.Text
   createdAt       DateTime  @default(now())
   updatedAt       DateTime  @updatedAt
 }
@@ -198,6 +211,12 @@ model ReviewQueueEntry {
   reviewedBy String?
   reviewedAt DateTime?
   createdAt  DateTime     @default(now())
+  // Mod-review channel message ID for the Approve/Deny embed, so it can be
+  // edited (buttons removed, resolution shown) once a decision is made.
+  messageId  String?
+  // Optional free-text reason a mod attaches when denying — from the web
+  // panel's textarea or the Discord deny modal. Null on approve.
+  reviewNote String?      @db.Text
 
   @@index([discordId])
   @@index([status])

@@ -7,6 +7,15 @@ export interface DashboardStats {
   pendingReview: number;
   rejected: number;
   unverified: number;
+  // % of the live Discord guild member count that's verified — not % of
+  // tracked Member rows, so it reflects "how much of the actual server."
+  verifiedPercent: number;
+}
+
+export interface SystemStatus {
+  geoStale: boolean;
+  erroringFeeds: number;
+  erroringSources: number;
 }
 
 export interface PendingReviewRow {
@@ -43,11 +52,32 @@ function reviewRow(row: PendingReviewRow): string {
       <form class="inline" method="post" action="/admin/review/${row.id}/approve">
         <button type="submit" class="btn-approve">Approve</button>
       </form>
-      <form class="inline" method="post" action="/admin/review/${row.id}/deny">
+      <form method="post" action="/admin/review/${row.id}/deny" class="deny-form">
+        <textarea name="note" placeholder="Reason (optional)" rows="1"></textarea>
         <button type="submit" class="btn-deny" onclick="return confirm('Deny and kick (unless admin)?')">Deny</button>
       </form>
     </td>
   </tr>`;
+}
+
+function systemStatusRows(system: SystemStatus): string {
+  const rows: string[] = [];
+  if (system.geoStale) {
+    rows.push(
+      `<li>GeoIP data is stale or not loaded — <a href="/admin/geo">check GeoIP / VPN</a>.</li>`,
+    );
+  }
+  if (system.erroringFeeds > 0) {
+    rows.push(
+      `<li>${system.erroringFeeds} RSS feed${system.erroringFeeds === 1 ? "" : "s"} failing to poll — <a href="/admin/rss">check RSS Feeds</a>.</li>`,
+    );
+  }
+  if (system.erroringSources > 0) {
+    rows.push(
+      `<li>${system.erroringSources} event source${system.erroringSources === 1 ? "" : "s"} failing to sync — <a href="/admin/events">check Game Day Events</a>.</li>`,
+    );
+  }
+  return rows.length === 0 ? "" : `<ul class="hint" style="margin:0 0 16px;padding-left:18px;">${rows.join("")}</ul>`;
 }
 
 export function dashboardPage(
@@ -55,6 +85,7 @@ export function dashboardPage(
   stats: DashboardStats,
   pending: PendingReviewRow[],
   settings: RuntimeSettings,
+  system: SystemStatus,
   flash?: string,
   flashKind?: FlashKind,
 ): string {
@@ -65,6 +96,7 @@ export function dashboardPage(
       <a class="stat" href="/admin/members?status=pending_review"><div class="value">${stats.pendingReview}</div><div class="label">Pending review</div></a>
       <a class="stat" href="/admin/members?status=rejected"><div class="value">${stats.rejected}</div><div class="label">Rejected</div></a>
       <a class="stat" href="/admin/members?status=unverified"><div class="value">${stats.unverified}</div><div class="label">Unverified</div></a>
+      <div class="stat"><div class="value">${stats.verifiedPercent}%</div><div class="label">Of server verified</div></div>
     </div>
 
     <h2>Pending review (${pending.length})</h2>
@@ -104,6 +136,7 @@ export function dashboardPage(
 
     <h2>System</h2>
     <div class="card">
+      ${systemStatusRows(system)}
       <p style="margin-bottom:14px;">Restarts the bot and web server (via the process manager's auto-restart).
       Briefly interrupts verification and takes the bot offline for a few seconds.</p>
       <form method="post" action="/admin/restart">
