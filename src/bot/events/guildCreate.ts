@@ -7,6 +7,14 @@ import { registerCommands } from "../commands.js";
 
 client.on("guildCreate", async (guild: Guild) => {
   try {
+    if (!config.discord.allowNewGuilds) {
+      const existing = await prisma.guild.findUnique({ where: { id: guild.id } });
+      if (!existing) {
+        console.log(`New guild joins are disabled (DISALLOW_NEW_GUILDS=true) — leaving ${guild.id} (${guild.name})`);
+        await guild.leave().catch((err) => console.error(`Failed to leave rejected guild ${guild.id}`, err));
+        return;
+      }
+    }
     await provisionGuild(guild, true);
   } catch (err) {
     console.error(`Failed to provision newly-joined guild ${guild.id} (${guild.name})`, err);
