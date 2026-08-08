@@ -25,9 +25,11 @@ export function healthPage(status: HealthStatus): string {
   const rows = [
     row("Discord bot", status.discord.ready, status.discord.tag ?? "not logged in"),
     row(
-      "Guild connection",
-      status.discord.guildConnected,
-      status.discord.memberCount !== null ? `${status.discord.memberCount} members` : "unreachable",
+      "Guild connections",
+      status.discord.guildCount > 0,
+      status.discord.guildCount > 0
+        ? `${status.discord.guildCount} guild${status.discord.guildCount === 1 ? "" : "s"}, ${status.discord.memberCount} members`
+        : "not connected to any guild",
     ),
     row(
       "Gateway latency",

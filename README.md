@@ -6,14 +6,24 @@ auto-approves members from an allow-listed set of countries; everyone else
 (VPN users, non-allow-listed countries) is routed to a moderator review
 queue.
 
+**Multi-guild**: one running instance can serve any number of independent
+Discord servers. Each server gets its own settings (allowed countries,
+verified role, review/audit channels, RSS feeds, Join-to-Create triggers,
+etc.), configured from `/admin` after picking which server to manage. See
+[Multi-guild](#multi-guild) below.
+
 ## How it works
 
-- **`GET /join`** — public join funnel. Redirects visitors into the Discord
-  server via a bot-generated invite that's valid for 1 hour (reused while
-  still fresh, re-minted once it expires). No identity check happens here.
+- **`GET /join/:guildId`** — public join funnel for a specific server.
+  Redirects visitors into that Discord server via a bot-generated invite
+  that's valid for 1 hour (reused while still fresh, re-minted once it
+  expires). No identity check happens here. Bare `GET /join` redirects here
+  automatically only when the bot serves exactly one server — with more
+  than one there's no way to guess which, so use the real per-guild link.
 - On join, the bot DMs the new member a unique `/verify/<token>` link
-  (falls back to a message in `DISCORD_START_HERE_CHANNEL_ID` if their DMs
-  are closed). Set `SEND_JOIN_DM=false` to disable this entirely — members
+  (falls back to a message in that guild's configured start-here channel if
+  their DMs are closed — see "Server setup" in `/admin`). Set `sendJoinDm`
+  to off in that same settings page to disable this entirely — members
   can still verify anytime with `/verify`. Members can also run the
   `/verify` slash command at any time to get a fresh link as an ephemeral
   reply, or simply **DM the bot directly** (any message works) for the same
@@ -172,16 +182,20 @@ match `PUBLIC_BASE_URL` in `.env`.
 
 ## Setup
 
-1. Create a Discord application/bot at https://discord.com/developers, invite
-   it to your server with the `bot` and `applications.commands` scopes
-   (the latter is required for slash commands), and these bot permissions:
-   Create Instant Invite, View Channels, Send Messages, Manage Roles,
-   Kick Members (needed to remove members denied manual verification).
+1. Create a Discord application/bot at https://discord.com/developers. You
+   can invite it to your first server now (`bot` + `applications.commands`
+   scopes, permissions: Create Instant Invite, View Channels, Send
+   Messages, Manage Roles, Kick Members — needed to remove members denied
+   manual verification) or later via the in-app "Add another server" link
+   on `/admin` once it's running, same permissions either way.
 2. Enable the **Server Members Intent** for the bot in the Developer Portal
    (required for `guildMemberAdd`).
-3. Create a `Verified` role below the bot's own role in the hierarchy, and
-   set channel/category permissions so `@everyone` cannot send messages but
-   `Verified` can.
+3. Per server: create a `Verified` role below the bot's own role in the
+   hierarchy, set channel/category permissions so `@everyone` cannot send
+   messages but `Verified` can, then pick that role (and optionally the
+   start-here/mod-review/audit-log channels) from `/admin` → **Server
+   setup** — see [Multi-guild](#multi-guild) below. Nothing needs to go in
+   `.env` for this anymore.
 4. GeoIP/VPN detection is self-hosted and needs no signup — data downloads
    automatically on first startup (see notes below).
 5. Add a site in the [Cloudflare Turnstile dashboard](https://dash.cloudflare.com/)
@@ -296,6 +310,78 @@ npm run build
 pm2 restart discord-verify
 pm2 logs discord-verify --lines 50 --nostream   # confirm it came back up cleanly
 ```
+
+## Multi-guild
+
+This bot serves any number of Discord servers from one running instance —
+one Application/bot token (`DISCORD_TOKEN`/`DISCORD_CLIENT_ID`/
+`DISCORD_CLIENT_SECRET`), but every other setting is per-guild.
+
+- **Adding a server**: invite the bot with the link on `/admin` →
+  **Add another server** (or the one shown when logging in with an account
+  that isn't an admin of any server yet). Joining fires
+  `src/bot/events/guildCreate.ts`, which creates that guild's `Settings`
+  row (seeded from the `.env` "seed defaults" as a starting template),
+  registers its slash commands, and posts a message in its system channel
+  (or DMs the server owner if there's no system channel) linking back to
+  `/admin` to finish setup.
+- **Server setup**: a freshly-added guild has no verified role or
+  review/audit channels configured yet — nothing works until an admin sets
+  them from `/admin` → **Server setup** (Dashboard page). This replaces
+  what used to be the `DISCORD_VERIFIED_ROLE_ID`/`DISCORD_START_HERE_CHANNEL_ID`/
+  `DISCORD_MOD_REVIEW_CHANNEL_ID`/`DISCORD_AUDIT_LOG_CHANNEL_ID` env vars.
+- **Admin login**: after Discord OAuth, the app checks every guild it's
+  installed in for where your account has **Administrator** — one match
+  signs you straight in, more than one shows a picker
+  (`/admin/select-server`, also reachable anytime via the sidebar's
+  "Switch server" link to manage a different guild without logging out).
+- **DMing the bot**: since a DM has no guild context, the bot looks up
+  every guild you have a `Member` row in and are still actually a member
+  of. Exactly one → replies as normal. Zero → "you're not in a server I
+  manage." More than one → asks you to use `/verify` inside the specific
+  server instead, rather than guessing which one you meant.
+
+### Migrating an existing single-guild deployment
+
+If you're upgrading a deployment that predates multi-guild support, the
+schema change to `Member`'s primary key (`discordId` alone →
+`(discordId, guildId)`, fixing a real bug where the same Discord user in
+two guilds would have shared/overwritten verification status) and the new
+required `guildId` columns on several tables mean a plain `npx prisma db
+push` will refuse to run (or offer to just delete data) against a database
+that already has rows. Do this instead, on a **backup of your database**:
+
+1. Note your existing guild's Discord ID (Discord → right-click your
+   server icon → Copy Server ID, with Developer Mode on).
+2. Point a **second, empty** database at the multi-guild code and run
+   `npx prisma db push` there — this gives you the full target schema
+   (including the new `Guild` table and the four re-keyed
+   `Settings`/`WelcomeSettings`/`VerifyPromptSettings`/`RssSettings`
+   tables) to use as a reference for the manual statements below, without
+   touching your real data yet.
+3. Insert one row into `Guild` for your existing server
+   (`id` = the Discord guild ID from step 1, `name` = your server's name).
+4. For each of `Settings`, `WelcomeSettings`, `VerifyPromptSettings`,
+   `RssSettings`: copy the single existing row's values into a new row
+   keyed by `guildId` = your guild ID (matching the new schema), including
+   the verified-role/start-here/mod-review/audit-log channel IDs from your
+   old `.env` into the new `Settings` columns of the same name.
+5. `UPDATE` every existing row in `VerificationToken`, `ReviewQueueEntry`,
+   `RssFeed`, `JtcTrigger`, `JtcChannel`, `EventSource`, `EventSourceItem`
+   to set `guildId` to your guild ID (all existing data belongs to that one
+   guild, by definition, since this deployment predates multi-guild).
+6. Now run `npx prisma db push` against the real database with the actual
+   multi-guild `prisma/schema.prisma` — every column it needs to add is
+   already backfilled, so the primary-key change and new `NOT NULL`
+   columns apply cleanly.
+7. Remove `DISCORD_GUILD_ID`/`DISCORD_VERIFIED_ROLE_ID`/
+   `DISCORD_START_HERE_CHANNEL_ID`/`DISCORD_MOD_REVIEW_CHANNEL_ID`/
+   `DISCORD_AUDIT_LOG_CHANNEL_ID` from `.env` (no longer read anywhere —
+   `src/config.ts` will fail to start if it still expects them and they're
+   missing, but it no longer expects them at all after this upgrade).
+8. Deploy and restart. Startup reconciliation
+   (`src/index.ts`/`provisionGuild`) will find the `Guild` row already
+   exists and skip re-announcing setup, and will register commands for it.
 
 ## Notes / follow-ups
 

@@ -28,7 +28,7 @@ async function handleJoin(newState: VoiceState): Promise<void> {
   });
 
   await prisma.jtcChannel.create({
-    data: { channelId: created.id, triggerId: trigger.id, number },
+    data: { channelId: created.id, triggerId: trigger.id, number, guildId: newState.guild.id },
   });
 
   await newState.setChannel(created);

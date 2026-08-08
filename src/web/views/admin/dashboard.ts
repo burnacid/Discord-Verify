@@ -1,6 +1,9 @@
 import { renderAdminPage } from "./layout.js";
 import type { AdminUser, FlashKind } from "./layout.js";
 import type { RuntimeSettings } from "../../../runtimeSettings.js";
+import type { GuildRole, GuildTextChannel } from "../../../bot/channelLookup.js";
+import { channelOptions } from "./channelOptions.js";
+import { roleOptions } from "./roleOptions.js";
 
 export interface DashboardStats {
   verified: number;
@@ -86,6 +89,8 @@ export function dashboardPage(
   pending: PendingReviewRow[],
   settings: RuntimeSettings,
   system: SystemStatus,
+  channels: GuildTextChannel[],
+  roles: GuildRole[],
   flash?: string,
   flashKind?: FlashKind,
 ): string {
@@ -113,6 +118,42 @@ export function dashboardPage(
           <tbody>${pending.map(reviewRow).join("")}</tbody>
         </table></div>`
     }
+
+    <h2>Server setup</h2>
+    <div class="card">
+      <p class="hint" style="margin-bottom:16px;">Required before members can be verified in this server. These used to be <code>.env</code> values — now configured per server here.</p>
+      <form method="post" action="/admin/server-setup">
+        <label for="verifiedRoleId">Verified role</label>
+        <select id="verifiedRoleId" name="verifiedRoleId" data-channel-picker>
+          <option value="">— none —</option>
+          ${roleOptions(roles, settings.verifiedRoleId)}
+        </select>
+        <div class="hint">Granted on successful verification. Required — nothing works without this set.</div>
+
+        <label for="startHereChannelId">Start-here channel (optional)</label>
+        <select id="startHereChannelId" name="startHereChannelId" data-channel-picker>
+          <option value="">— none —</option>
+          ${channelOptions(channels, settings.startHereChannelId, "#")}
+        </select>
+        <div class="hint">Fallback message channel for members whose DMs are closed and can't receive a join link.</div>
+
+        <label for="modReviewChannelId">Mod-review channel (optional)</label>
+        <select id="modReviewChannelId" name="modReviewChannelId" data-channel-picker>
+          <option value="">— none —</option>
+          ${channelOptions(channels, settings.modReviewChannelId, "#")}
+        </select>
+        <div class="hint">Approve/Deny embeds for members routed to manual review are posted here.</div>
+
+        <label for="auditLogChannelId">Audit-log channel (optional)</label>
+        <select id="auditLogChannelId" name="auditLogChannelId" data-channel-picker>
+          <option value="">— none —</option>
+          ${channelOptions(channels, settings.auditLogChannelId, "#")}
+        </select>
+        <div class="hint">Permanent read-only record of every verify/unverify/approve/deny decision.</div>
+
+        <button type="submit" class="btn-primary mt-lg">Save server setup</button>
+      </form>
+    </div>
 
     <h2>Verification settings</h2>
     <div class="card">

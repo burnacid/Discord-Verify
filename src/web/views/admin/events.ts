@@ -4,6 +4,7 @@ import type { EventSource } from "@prisma/client";
 import type { GuildTextChannel, GuildRole } from "../../../bot/channelLookup.js";
 import { DEFAULT_EVENT_MESSAGE_TEMPLATE } from "../../../jobs/eventSync.js";
 import { channelOptions } from "./channelOptions.js";
+import { roleOptions } from "./roleOptions.js";
 
 function escapeHtml(value: string): string {
   return value
@@ -51,12 +52,6 @@ function channelLabel(channelId: string, channels: GuildTextChannel[]): string {
   return channel.category
     ? `<span class="hint">${escapeHtml(channel.category)} /</span> #${escapeHtml(channel.name)}`
     : `#${escapeHtml(channel.name)}`;
-}
-
-function roleOptions(roles: GuildRole[], selectedId?: string | null): string {
-  return roles
-    .map((r) => `<option value="${r.id}" ${r.id === selectedId ? "selected" : ""}>@${escapeHtml(r.name)}</option>`)
-    .join("");
 }
 
 function sourceRow(source: EventSource, activeCount: number, channels: GuildTextChannel[], roles: GuildRole[]): string {

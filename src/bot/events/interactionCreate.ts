@@ -120,7 +120,7 @@ async function handleReviewQueueCommand(interaction: ChatInputCommandInteraction
 
   await interaction.deferReply({ flags: MessageFlags.Ephemeral });
 
-  const entries = await listPendingReviewEntries();
+  const entries = await listPendingReviewEntries(interaction.guildId);
   if (entries.length === 0) {
     await interaction.editReply("Nothing pending.");
     return;
@@ -138,11 +138,16 @@ async function handleReviewQueueCommand(interaction: ChatInputCommandInteraction
 }
 
 async function handleApprove(interaction: ButtonInteraction, entryId: string): Promise<void> {
+  // These buttons only ever get attached to messages posted in a guild's
+  // mod-review channel, so guildId should always be set — bail defensively
+  // rather than assert non-null in case that assumption is ever violated.
+  if (!interaction.guildId) return;
+
   // Discord invalidates the interaction token ~3s after the click, and role
   // assignment/DB writes/DMs can easily exceed that against a remote DB —
   // so acknowledge immediately and use followUp/editReply for everything after.
   await interaction.deferUpdate();
-  const result = await decideReviewEntry(entryId, true, interaction.user.id);
+  const result = await decideReviewEntry(entryId, interaction.guildId, true, interaction.user.id);
   await respondToDecision(interaction, result);
 }
 
@@ -167,11 +172,13 @@ async function handleDenyButtonClick(interaction: ButtonInteraction, entryId: st
 }
 
 async function handleDenyModalSubmit(interaction: ModalSubmitInteraction): Promise<void> {
+  if (!interaction.guildId) return;
+
   const entryId = interaction.customId.split(":")[1];
   await interaction.deferUpdate();
 
   const note = interaction.fields.getTextInputValue("note").trim();
-  const result = await decideReviewEntry(entryId, false, interaction.user.id, note || undefined);
+  const result = await decideReviewEntry(entryId, interaction.guildId, false, interaction.user.id, note || undefined);
   await respondToDecision(interaction, result);
 }
 

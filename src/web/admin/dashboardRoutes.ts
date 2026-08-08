@@ -1,7 +1,7 @@
 import { Router } from "express";
 import { prisma } from "../../db.js";
 import { client } from "../../bot/client.js";
-import { config } from "../../config.js";
+import { fetchGuildRoles, fetchGuildTextChannels } from "../../bot/channelLookup.js";
 import { getRuntimeSettings, updateRuntimeSettings } from "../../runtimeSettings.js";
 import { decideReviewEntry } from "../../bot/adminActions.js";
 import { requestRestart } from "../../lifecycle.js";
@@ -26,20 +26,23 @@ dashboardRouter.use("/admin", requireAdmin);
 dashboardRouter.get(
   "/admin",
   asyncHandler(async (req, res) => {
-    const [verified, pendingReview, rejected, unverified, pendingEntries, guild, erroringFeeds, erroringSources] =
+    const guildId = req.session.guildId!;
+    const [verified, pendingReview, rejected, unverified, pendingEntries, guild, erroringFeeds, erroringSources, channels, roles] =
       await Promise.all([
-        prisma.member.count({ where: { status: "verified" } }),
-        prisma.member.count({ where: { status: "pending_review" } }),
-        prisma.member.count({ where: { status: "rejected" } }),
-        prisma.member.count({ where: { status: "unverified" } }),
+        prisma.member.count({ where: { guildId, status: "verified" } }),
+        prisma.member.count({ where: { guildId, status: "pending_review" } }),
+        prisma.member.count({ where: { guildId, status: "rejected" } }),
+        prisma.member.count({ where: { guildId, status: "unverified" } }),
         prisma.reviewQueueEntry.findMany({
-          where: { status: "pending" },
+          where: { guildId, status: "pending" },
           include: { member: true },
           orderBy: { createdAt: "asc" },
         }),
-        client.guilds.fetch(config.discord.guildId),
-        prisma.rssFeed.count({ where: { enabled: true, lastError: { not: null } } }),
-        prisma.eventSource.count({ where: { enabled: true, lastError: { not: null } } }),
+        client.guilds.fetch(guildId),
+        prisma.rssFeed.count({ where: { guildId, enabled: true, lastError: { not: null } } }),
+        prisma.eventSource.count({ where: { guildId, enabled: true, lastError: { not: null } } }),
+        fetchGuildTextChannels(guildId),
+        fetchGuildRoles(guildId),
       ]);
 
     const pending: PendingReviewRow[] = pendingEntries.map((entry) => ({
@@ -69,8 +72,10 @@ dashboardRouter.get(
         { discordId: req.session.discordId!, username: req.session.username ?? "Admin" },
         { verified, pendingReview, rejected, unverified, verifiedPercent },
         pending,
-        getRuntimeSettings(),
+        getRuntimeSettings(guildId),
         system,
+        channels,
+        roles,
         flash,
         flashKind,
       ),
@@ -81,7 +86,7 @@ dashboardRouter.get(
 dashboardRouter.post(
   "/admin/review/:id/approve",
   asyncHandler(async (req, res) => {
-    const result = await decideReviewEntry(req.params.id, true, req.session.discordId!);
+    const result = await decideReviewEntry(req.params.id, req.session.guildId!, true, req.session.discordId!);
     const flash = result.ok
       ? "Approved."
       : result.reason === "not_found"
@@ -97,7 +102,13 @@ dashboardRouter.post(
   "/admin/review/:id/deny",
   asyncHandler(async (req, res) => {
     const note = typeof req.body?.note === "string" ? req.body.note.trim() : "";
-    const result = await decideReviewEntry(req.params.id, false, req.session.discordId!, note || undefined);
+    const result = await decideReviewEntry(
+      req.params.id,
+      req.session.guildId!,
+      false,
+      req.session.discordId!,
+      note || undefined,
+    );
     const flash = result.ok
       ? result.deniedAdmin
         ? "Denied (member is an admin, not kicked)."
@@ -123,7 +134,7 @@ dashboardRouter.post(
       return;
     }
 
-    await updateRuntimeSettings({
+    await updateRuntimeSettings(req.session.guildId!, {
       allowedCountries: allowedCountries
         .split(",")
         .map((c) => c.trim().toUpperCase())
@@ -133,6 +144,25 @@ dashboardRouter.post(
     });
 
     res.redirect(`/admin?${flashQuery("Settings saved.")}`);
+  }),
+);
+
+dashboardRouter.post(
+  "/admin/server-setup",
+  asyncHandler(async (req, res) => {
+    const pick = (name: string) => {
+      const value = req.body?.[name];
+      return typeof value === "string" && value.trim() !== "" ? value.trim() : null;
+    };
+
+    await updateRuntimeSettings(req.session.guildId!, {
+      verifiedRoleId: pick("verifiedRoleId"),
+      startHereChannelId: pick("startHereChannelId"),
+      modReviewChannelId: pick("modReviewChannelId"),
+      auditLogChannelId: pick("auditLogChannelId"),
+    });
+
+    res.redirect(`/admin?${flashQuery("Server setup saved.")}`);
   }),
 );
 

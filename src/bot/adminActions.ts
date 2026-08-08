@@ -1,7 +1,7 @@
 import { EmbedBuilder } from "discord.js";
 import { prisma } from "../db.js";
 import { client } from "./client.js";
-import { config } from "../config.js";
+import { getRuntimeSettings } from "../runtimeSettings.js";
 import { postAuditLog } from "./auditLog.js";
 import {
   assignVerifiedRole,
@@ -27,7 +27,7 @@ export async function verifyMember(
   await ensureMember(discordId, guildId);
 
   try {
-    await assignVerifiedRole(discordId);
+    await assignVerifiedRole(discordId, guildId);
   } catch (err) {
     console.error(`Failed to assign verified role via ${via}`, err);
     return {
@@ -37,12 +37,12 @@ export async function verifyMember(
   }
 
   await prisma.member.update({
-    where: { discordId },
+    where: { discordId_guildId: { discordId, guildId } },
     data: { status: "verified", verifiedAt: new Date() },
   });
 
   await sendDirectMessage(discordId, "You've been manually verified! You can now post in the server.");
-  await postAuditLog(`<@${discordId}> was manually **verified** by <@${decidedById}> via ${via}.`);
+  await postAuditLog(guildId, `<@${discordId}> was manually **verified** by <@${decidedById}> via ${via}.`);
 
   return { ok: true };
 }
@@ -57,7 +57,7 @@ export async function unverifyMember(
   await ensureMember(discordId, guildId);
 
   try {
-    await removeVerifiedRole(discordId);
+    await removeVerifiedRole(discordId, guildId);
   } catch (err) {
     console.error(`Failed to remove verified role via ${via}`, err);
     return {
@@ -67,11 +67,11 @@ export async function unverifyMember(
   }
 
   await prisma.member.update({
-    where: { discordId },
+    where: { discordId_guildId: { discordId, guildId } },
     data: { status: "unverified", verifiedAt: null },
   });
 
-  await postAuditLog(`<@${discordId}> was manually **unverified** by <@${decidedById}> via ${via}.`);
+  await postAuditLog(guildId, `<@${discordId}> was manually **unverified** by <@${decidedById}> via ${via}.`);
 
   return { ok: true };
 }
@@ -87,12 +87,13 @@ export type ReviewDecisionResult =
  */
 export async function decideReviewEntry(
   entryId: string,
+  guildId: string,
   approve: boolean,
   decidedById: string,
   note?: string,
 ): Promise<ReviewDecisionResult> {
   const entry = await prisma.reviewQueueEntry.findUnique({ where: { id: entryId } });
-  if (!entry) {
+  if (!entry || entry.guildId !== guildId) {
     return { ok: false, reason: "not_found" };
   }
   if (entry.status !== "pending") {
@@ -103,20 +104,20 @@ export async function decideReviewEntry(
 
   if (approve) {
     try {
-      await assignVerifiedRole(entry.discordId);
+      await assignVerifiedRole(entry.discordId, guildId);
     } catch (err) {
       console.error("Failed to assign verified role from review queue", err);
       return { ok: false, reason: "role_failed" };
     }
   } else {
-    deniedAdmin = await isAdminMember(entry.discordId);
+    deniedAdmin = await isAdminMember(entry.discordId, guildId);
     if (!deniedAdmin) {
       await sendDirectMessage(
         entry.discordId,
         "Your verification request was denied, and you have been removed from the server.",
       );
       try {
-        await kickMember(entry.discordId, "Denied manual verification");
+        await kickMember(entry.discordId, guildId, "Denied manual verification");
       } catch (err) {
         console.error("Failed to kick member after denial", err);
         return { ok: false, reason: "kick_failed" };
@@ -139,7 +140,7 @@ export async function decideReviewEntry(
   });
 
   await prisma.member.update({
-    where: { discordId: entry.discordId },
+    where: { discordId_guildId: { discordId: entry.discordId, guildId } },
     data: {
       status: approve ? "verified" : "rejected",
       verifiedAt: approve ? new Date() : null,
@@ -154,16 +155,18 @@ export async function decideReviewEntry(
       "Your verification request was approved! You can now post in the server.",
     );
     await postAuditLog(
+      guildId,
       `<@${entry.discordId}> was **approved** by <@${decidedById}> (reason: ${entry.reason}).`,
     );
   } else {
     await postAuditLog(
+      guildId,
       `<@${entry.discordId}> was **denied** by <@${decidedById}> (reason: ${entry.reason})` +
         `${deniedAdmin ? " — not kicked (admin)" : " and removed from the server"}.${noteSuffix}`,
     );
   }
 
-  await markReviewMessageResolved(entry.messageId, approve, decidedById, reviewNote);
+  await markReviewMessageResolved(guildId, entry.messageId, approve, decidedById, reviewNote);
 
   return { ok: true, deniedAdmin };
 }
@@ -174,15 +177,17 @@ export async function decideReviewEntry(
 // go through decideReviewEntry. Never lets a failure here fail the overall
 // decision — the role assignment/DB update already succeeded by this point.
 async function markReviewMessageResolved(
+  guildId: string,
   messageId: string | null,
   approve: boolean,
   decidedById: string,
   note: string | null,
 ): Promise<void> {
-  if (!messageId || !config.discord.modReviewChannelId) return;
+  const modReviewChannelId = getRuntimeSettings(guildId).modReviewChannelId;
+  if (!messageId || !modReviewChannelId) return;
 
   try {
-    const channel = await client.channels.fetch(config.discord.modReviewChannelId);
+    const channel = await client.channels.fetch(modReviewChannelId);
     if (!channel?.isTextBased() || channel.isThread() || channel.isDMBased()) return;
 
     const message = await channel.messages.fetch(messageId);

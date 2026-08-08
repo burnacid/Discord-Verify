@@ -75,8 +75,8 @@ async function ensureGeoCheck(
   return { ...result, ip };
 }
 
-function isAutoVerified(geo: GeoResult): boolean {
-  const settings = getRuntimeSettings();
+function isAutoVerified(geo: GeoResult, guildId: string): boolean {
+  const settings = getRuntimeSettings(guildId);
   const countryAllowed = geo.countryCode !== null && settings.allowedCountries.includes(geo.countryCode);
   const lowRisk = geo.fraudScore <= settings.maxFraudScore && !geo.isVpn;
   return countryAllowed && lowRisk;
@@ -135,13 +135,13 @@ verifyRouter.get("/verify/:token", verifyLimiter, asyncHandler(async (req, res) 
   }
 
   await prisma.member.update({
-    where: { discordId: record.discordId },
+    where: { discordId_guildId: { discordId: record.discordId, guildId: record.guildId } },
     data: { country: geo.countryCode, ipRiskScore: geo.fraudScore, lastIp: geo.ip },
   });
 
-  if (isAutoVerified(geo)) {
+  if (isAutoVerified(geo, record.guildId)) {
     try {
-      await assignVerifiedRole(record.discordId);
+      await assignVerifiedRole(record.discordId, record.guildId);
     } catch (err) {
       console.error("Failed to assign verified role", err);
       res
@@ -151,7 +151,7 @@ verifyRouter.get("/verify/:token", verifyLimiter, asyncHandler(async (req, res) 
     }
     await prisma.verificationToken.update({ where: { token }, data: { usedAt: new Date() } });
     await prisma.member.update({
-      where: { discordId: record.discordId },
+      where: { discordId_guildId: { discordId: record.discordId, guildId: record.guildId } },
       data: { status: "verified", verifiedAt: new Date() },
     });
     res.send(successPage());
@@ -218,10 +218,13 @@ verifyRouter.post("/verify/:token", verifyLimiter, asyncHandler(async (req, res)
 
   await prisma.verificationToken.update({ where: { token }, data: { usedAt: new Date() } });
   await prisma.member.update({
-    where: { discordId: record.discordId },
+    where: { discordId_guildId: { discordId: record.discordId, guildId: record.guildId } },
     data: { status: "pending_review" },
   });
-  await createReviewEntry(record.discordId, geo.isVpn ? "vpn" : "country", record.geoIp, geo, { name, email });
+  await createReviewEntry(record.discordId, record.guildId, geo.isVpn ? "vpn" : "country", record.geoIp, geo, {
+    name,
+    email,
+  });
 
   res.send(reviewSubmittedPage());
 }));

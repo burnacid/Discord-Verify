@@ -1,5 +1,4 @@
 import { client } from "../bot/client.js";
-import { config } from "../config.js";
 import { prisma } from "../db.js";
 
 export const startedAt = new Date();
@@ -11,8 +10,8 @@ export interface HealthStatus {
     ready: boolean;
     tag: string | null;
     wsPingMs: number | null;
-    guildConnected: boolean;
-    memberCount: number | null;
+    guildCount: number;
+    memberCount: number;
   };
   database: {
     ok: boolean;
@@ -23,17 +22,13 @@ export interface HealthStatus {
 export async function getHealthStatus(): Promise<HealthStatus> {
   const ready = client.isReady();
 
-  let guildConnected = false;
-  let memberCount: number | null = null;
-  if (ready) {
-    try {
-      const guild = await client.guilds.fetch(config.discord.guildId);
-      guildConnected = true;
-      memberCount = guild.memberCount;
-    } catch {
-      guildConnected = false;
-    }
-  }
+  // Multi-guild: "healthy" no longer means one specific configured guild is
+  // reachable — it means the bot is connected to at least one of the guilds
+  // it serves. memberCount sums across all of them.
+  const guildCount = ready ? client.guilds.cache.size : 0;
+  const memberCount = ready
+    ? [...client.guilds.cache.values()].reduce((sum, guild) => sum + guild.memberCount, 0)
+    : 0;
 
   let dbOk = true;
   let dbError: string | null = null;
@@ -45,13 +40,13 @@ export async function getHealthStatus(): Promise<HealthStatus> {
   }
 
   return {
-    ok: ready && guildConnected && dbOk,
+    ok: ready && guildCount > 0 && dbOk,
     uptimeSeconds: Math.floor((Date.now() - startedAt.getTime()) / 1000),
     discord: {
       ready,
       tag: client.user?.tag ?? null,
       wsPingMs: ready ? Math.round(client.ws.ping) : null,
-      guildConnected,
+      guildCount,
       memberCount,
     },
     database: {

@@ -25,8 +25,18 @@ enum ReviewStatus {
   denied
 }
 
+// One row per Discord server this bot is installed in. Populated by the
+// guildCreate handler (src/bot/events/guildCreate.ts) and a startup
+// reconciliation pass (src/index.ts) — backs the admin login server picker
+// and the sidebar switcher without a live Discord API call per request.
+model Guild {
+  id        String   @id
+  name      String
+  createdAt DateTime @default(now())
+}
+
 model Member {
-  discordId   String       @id
+  discordId   String
   guildId     String
   status      MemberStatus @default(unverified)
   country     String?
@@ -38,13 +48,21 @@ model Member {
   tokens      VerificationToken[]
   reviewQueue ReviewQueueEntry[]
 
+  // Composite PK, not discordId alone — the same Discord user can be a
+  // member of multiple guilds this bot serves, each with independent
+  // verification status. (This used to be `discordId @id`, which silently
+  // conflated a user's status across every guild they were in — see the
+  // migration notes in the multi-guild plan for backfilling existing rows
+  // before this constraint is applied.)
+  @@id([discordId, guildId])
   @@index([status])
 }
 
 model VerificationToken {
   token     String    @id @default(uuid())
   discordId String
-  member    Member    @relation(fields: [discordId], references: [discordId])
+  guildId   String
+  member    Member    @relation(fields: [discordId, guildId], references: [discordId, guildId])
   expiresAt DateTime
   usedAt    DateTime?
   createdAt DateTime  @default(now())
@@ -59,7 +77,7 @@ model VerificationToken {
   geoRaw        Json?
   geoCheckedAt  DateTime?
 
-  @@index([discordId])
+  @@index([discordId, guildId])
 }
 
 model InviteLink {
@@ -71,19 +89,27 @@ model InviteLink {
   @@index([guildId, expiresAt])
 }
 
-// Singleton row (id is always 1) holding runtime-editable settings that
-// were previously env-only. Seeded from .env defaults on first boot if the
-// row doesn't exist yet; edited live from the admin panel afterward.
+// One row per guild holding runtime-editable settings that used to be
+// env-only and/or a single global row. Seeded with defaults when a guild is
+// first added (see guildCreate.ts); edited live from the admin panel
+// afterward. verifiedRoleId/startHereChannelId/modReviewChannelId/
+// auditLogChannelId used to be DISCORD_*_ID env vars — impossible to keep
+// as env vars once there's more than one guild, so they live here now.
 model Settings {
-  id               Int      @id @default(1)
+  guildId          String   @id
   allowedCountries String
   maxFraudScore    Int
   sendJoinDm       Boolean
+  verifiedRoleId      String?
+  startHereChannelId  String?
+  modReviewChannelId  String?
+  auditLogChannelId   String?
   updatedAt        DateTime @updatedAt
 }
 
 model RssFeed {
   id           String    @id @default(uuid())
+  guildId      String
   name         String
   feedUrl      String
   channelId    String
@@ -100,22 +126,27 @@ model RssFeed {
   lastError    String?   @db.Text
   createdAt    DateTime  @default(now())
   updatedAt    DateTime  @updatedAt
+
+  @@index([guildId])
 }
 
-// Singleton row (id always 1) holding the default RSS post template used by
-// feeds that don't set their own — same pattern as the Settings model, but
-// scoped to the RSS module rather than mixed into the main Settings table.
+// One row per guild holding the default RSS post template used by feeds
+// that don't set their own — same pattern as Settings, scoped to the RSS
+// module rather than mixed into the main Settings table.
 model RssSettings {
-  id              Int      @id @default(1)
+  guildId         String   @id
   defaultTemplate String   @db.Text
   updatedAt       DateTime @updatedAt
 }
 
 model JtcTrigger {
   id        String   @id @default(uuid())
+  guildId   String
   channelId String   @unique
   name      String
   createdAt DateTime @default(now())
+
+  @@index([guildId])
 }
 
 // No relation/cascade to JtcTrigger on purpose: deleting a trigger must not
@@ -123,27 +154,30 @@ model JtcTrigger {
 // until they empty out and get cleaned up normally.
 model JtcChannel {
   id        String   @id @default(uuid())
+  guildId   String
   channelId String   @unique
   triggerId String
   number    Int
   createdAt DateTime @default(now())
+
+  @@index([guildId])
 }
 
-// Singleton row (id always 1) holding the join-welcome message config —
-// same pattern as Settings/RssSettings, scoped to this module.
+// One row per guild holding the join-welcome message config — same pattern
+// as Settings/RssSettings, scoped to this module.
 model WelcomeSettings {
-  id        Int      @id @default(1)
+  guildId   String   @id
   enabled   Boolean  @default(false)
   channelId String?
   template  String   @db.Text
   updatedAt DateTime @updatedAt
 }
 
-// Singleton row (id always 1) — configures a channel that, when a
-// not-yet-verified member posts in it, gets sent a verification link by DM.
-// Same pattern as WelcomeSettings.
+// One row per guild — configures a channel that, when a not-yet-verified
+// member posts in it, gets sent a verification link by DM. Same pattern as
+// WelcomeSettings.
 model VerifyPromptSettings {
-  id        Int      @id @default(1)
+  guildId   String   @id
   enabled   Boolean  @default(false)
   channelId String?
   updatedAt DateTime @updatedAt
@@ -151,6 +185,7 @@ model VerifyPromptSettings {
 
 model EventSource {
   id              String    @id @default(uuid())
+  guildId         String
   name            String
   provider        String    @default("custom") // "custom" | "tribe" (WordPress The Events Calendar)
   apiUrl          String
@@ -170,6 +205,8 @@ model EventSource {
   lastError       String?   @db.Text
   createdAt       DateTime  @default(now())
   updatedAt       DateTime  @updatedAt
+
+  @@index([guildId])
 }
 
 // No DB-level relation/cascade to EventSource — deleting a source must also
@@ -179,6 +216,7 @@ model EventSource {
 // EventSource row (and these rows) are removed.
 model EventSourceItem {
   id             String    @id @default(uuid())
+  guildId        String
   sourceId       String
   externalId     String
   discordEventId String
@@ -197,12 +235,14 @@ model EventSourceItem {
   createdAt      DateTime  @default(now())
 
   @@unique([sourceId, externalId])
+  @@index([guildId])
 }
 
 model ReviewQueueEntry {
   id         String       @id @default(uuid())
   discordId  String
-  member     Member       @relation(fields: [discordId], references: [discordId])
+  guildId    String
+  member     Member       @relation(fields: [discordId, guildId], references: [discordId, guildId])
   reason     ReviewReason
   ipInfo     Json
   name       String       @default("")
@@ -218,6 +258,6 @@ model ReviewQueueEntry {
   // panel's textarea or the Discord deny modal. Null on approve.
   reviewNote String?      @db.Text
 
-  @@index([discordId])
-  @@index([status])
+  @@index([discordId, guildId])
+  @@index([guildId, status])
 }

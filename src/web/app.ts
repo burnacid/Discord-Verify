@@ -8,6 +8,7 @@ import { verifyRouter } from "./routes/verify.js";
 import { requestLogger } from "./requestLogger.js";
 import { sessionMiddleware } from "./admin/session.js";
 import { oauthRouter } from "./admin/oauth.js";
+import { selectServerRouter } from "./admin/selectServerRoutes.js";
 import { dashboardRouter } from "./admin/dashboardRoutes.js";
 import { membersRouter } from "./admin/membersRoutes.js";
 import "./admin/modules.js";
@@ -34,12 +35,13 @@ export function createApp() {
   app.use(joinRouter);
   app.use(verifyRouter);
   app.use(oauthRouter);
+  app.use(selectServerRouter);
   app.use(dashboardRouter);
   app.use(membersRouter);
   for (const mod of adminModules) app.use(mod.router);
 
   app.use((req: Request, res: Response) => {
-    if (req.path.startsWith("/join/invite") || req.path === "/health.json") {
+    if ((req.path.startsWith("/join/") && req.path.endsWith("/invite")) || req.path === "/health.json") {
       res.status(404).json({ error: "Not found" });
       return;
     }
@@ -50,7 +52,7 @@ export function createApp() {
     console.error("Unhandled request error", err);
     if (res.headersSent) return;
 
-    if (req.path.startsWith("/join/invite")) {
+    if (req.path.startsWith("/join/") && req.path.endsWith("/invite")) {
       res.status(500).json({ error: "Something went wrong. Please try again shortly." });
       return;
     }

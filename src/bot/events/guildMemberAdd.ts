@@ -24,8 +24,8 @@ client.on("guildMemberAdd", async (member: GuildMember) => {
   // review. Falls through to the normal flow if role restoration fails.
   if (existing.status === "verified") {
     try {
-      await assignVerifiedRole(member.id);
-      if (getRuntimeSettings().sendJoinDm) {
+      await assignVerifiedRole(member.id, member.guild.id);
+      if (getRuntimeSettings(member.guild.id).sendJoinDm) {
         await sendDirectMessage(
           member.id,
           "Welcome back! You're already verified, so I've restored your Verified role.",
@@ -37,14 +37,14 @@ client.on("guildMemberAdd", async (member: GuildMember) => {
     }
   }
 
-  // SEND_JOIN_DM=false disables the automatic join DM (and its channel
+  // sendJoinDm=false disables the automatic join DM (and its channel
   // fallback) entirely — members can still self-serve with /verify.
-  if (!getRuntimeSettings().sendJoinDm) return;
+  if (!getRuntimeSettings(member.guild.id).sendJoinDm) return;
 
-  const token = await issueVerificationToken(member.id);
+  const token = await issueVerificationToken(member.id, member.guild.id);
 
   const dmSent = await sendVerificationDm(member.id, token);
   if (!dmSent) {
-    await postStartHereFallback(member.id, token);
+    await postStartHereFallback(member.id, member.guild.id, token);
   }
 });

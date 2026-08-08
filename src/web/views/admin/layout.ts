@@ -60,6 +60,7 @@ export function renderAdminPage(
               : ""
           }
           <div class="nav-group nav-group-bottom">
+            ${navLink("/admin/select-server", "Switch server", ICONS.globe)}
             ${navLink("/health", "Health", ICONS.activity, true)}
           </div>
         </nav>

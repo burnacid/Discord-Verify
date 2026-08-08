@@ -5,8 +5,8 @@ import {
   EmbedBuilder,
 } from "discord.js";
 import { client } from "./client.js";
-import { config } from "../config.js";
 import { prisma } from "../db.js";
+import { getRuntimeSettings } from "../runtimeSettings.js";
 import type { IpCheckResult } from "../geo/provider.js";
 
 export interface ReviewSubmission {
@@ -16,6 +16,7 @@ export interface ReviewSubmission {
 
 export async function createReviewEntry(
   discordId: string,
+  guildId: string,
   reason: "vpn" | "country",
   ip: string,
   ipCheck: IpCheckResult,
@@ -24,6 +25,7 @@ export async function createReviewEntry(
   const entry = await prisma.reviewQueueEntry.create({
     data: {
       discordId,
+      guildId,
       reason,
       ipInfo: ipCheck.raw as object,
       name: submission.name,
@@ -31,8 +33,9 @@ export async function createReviewEntry(
     },
   });
 
-  if (!config.discord.modReviewChannelId) return;
-  const channel = await client.channels.fetch(config.discord.modReviewChannelId);
+  const modReviewChannelId = getRuntimeSettings(guildId).modReviewChannelId;
+  if (!modReviewChannelId) return;
+  const channel = await client.channels.fetch(modReviewChannelId);
   if (!channel?.isTextBased() || channel.isThread() || channel.isDMBased()) return;
 
   const embed = new EmbedBuilder()
@@ -65,10 +68,10 @@ export async function createReviewEntry(
 }
 
 // Shared by the dashboard and the /review-queue command so both list the
-// same pending entries the same way.
-export function listPendingReviewEntries() {
+// same pending entries the same way, scoped to one guild.
+export function listPendingReviewEntries(guildId: string) {
   return prisma.reviewQueueEntry.findMany({
-    where: { status: "pending" },
+    where: { status: "pending", guildId },
     include: { member: true },
     orderBy: { createdAt: "asc" },
   });

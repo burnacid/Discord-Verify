@@ -45,15 +45,23 @@ function parseMentionRoleId(value: unknown): string | null {
   return trimmed === "" ? null : trimmed;
 }
 
+// A source's id is a global UUID, so without this an admin of one guild
+// could otherwise edit/toggle/delete another guild's source by id.
+async function findOwnedSource(id: string, guildId: string) {
+  const source = await prisma.eventSource.findUnique({ where: { id } });
+  return source && source.guildId === guildId ? source : null;
+}
+
 eventsRouter.get(
   "/admin/events",
   asyncHandler(async (req, res) => {
+    const guildId = req.session.guildId!;
     const flash = typeof req.query.flash === "string" ? req.query.flash : undefined;
     const flashKind = parseFlashKind(req.query.flashKind);
     const [sources, channels, roles] = await Promise.all([
-      prisma.eventSource.findMany({ orderBy: { createdAt: "asc" } }),
-      fetchGuildTextChannels(),
-      fetchGuildRoles(),
+      prisma.eventSource.findMany({ where: { guildId }, orderBy: { createdAt: "asc" } }),
+      fetchGuildTextChannels(guildId),
+      fetchGuildRoles(guildId),
     ]);
     const activeCounts = await Promise.all(
       sources.map((s) => prisma.eventSourceItem.count({ where: { sourceId: s.id } })),
@@ -96,6 +104,7 @@ eventsRouter.post(
 
     await prisma.eventSource.create({
       data: {
+        guildId: req.session.guildId!,
         name,
         provider,
         apiUrl,
@@ -145,28 +154,28 @@ eventsRouter.post(
       return;
     }
 
-    const result = await prisma.eventSource
-      .update({
-        where: { id: req.params.id },
-        data: {
-          name,
-          provider,
-          apiUrl,
-          timezone,
-          durationMinutes,
-          lookaheadDays,
-          nameFilter,
-          nameFilterMode,
-          messageChannelId,
-          messageTemplate,
-          mentionRoleId,
-        },
-      })
-      .catch(() => null);
-    if (!result) {
+    const existing = await findOwnedSource(req.params.id, req.session.guildId!);
+    if (!existing) {
       res.redirect(`/admin/events?${flashQuery("Source not found.", "error")}`);
       return;
     }
+
+    await prisma.eventSource.update({
+      where: { id: existing.id },
+      data: {
+        name,
+        provider,
+        apiUrl,
+        timezone,
+        durationMinutes,
+        lookaheadDays,
+        nameFilter,
+        nameFilterMode,
+        messageChannelId,
+        messageTemplate,
+        mentionRoleId,
+      },
+    });
     res.redirect(`/admin/events?${flashQuery("Source updated.")}`);
   }),
 );
@@ -174,12 +183,12 @@ eventsRouter.post(
 eventsRouter.post(
   "/admin/events/:id/toggle",
   asyncHandler(async (req, res) => {
-    const existing = await prisma.eventSource.findUnique({ where: { id: req.params.id } });
+    const existing = await findOwnedSource(req.params.id, req.session.guildId!);
     if (!existing) {
       res.redirect(`/admin/events?${flashQuery("Source not found.", "error")}`);
       return;
     }
-    await prisma.eventSource.update({ where: { id: req.params.id }, data: { enabled: !existing.enabled } });
+    await prisma.eventSource.update({ where: { id: existing.id }, data: { enabled: !existing.enabled } });
     res.redirect(`/admin/events?${flashQuery(existing.enabled ? "Source disabled." : "Source enabled.")}`);
   }),
 );
@@ -187,7 +196,7 @@ eventsRouter.post(
 eventsRouter.post(
   "/admin/events/:id/delete",
   asyncHandler(async (req, res) => {
-    const source = await prisma.eventSource.findUnique({ where: { id: req.params.id } });
+    const source = await findOwnedSource(req.params.id, req.session.guildId!);
     if (source) {
       // Removes every Discord scheduled event and posted message this
       // source ever created before dropping the source itself — nothing
@@ -195,8 +204,8 @@ eventsRouter.post(
       await deleteAllEventsForSource(source).catch((err) =>
         console.error(`Failed to clean up events for deleted source "${source.name}"`, err),
       );
+      await prisma.eventSource.delete({ where: { id: source.id } }).catch(() => {});
     }
-    await prisma.eventSource.delete({ where: { id: req.params.id } }).catch(() => {});
     res.redirect(`/admin/events?${flashQuery("Source and its events deleted.")}`);
   }),
 );

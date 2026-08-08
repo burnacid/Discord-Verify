@@ -1,6 +1,5 @@
 import { ChannelType } from "discord.js";
 import { client } from "./client.js";
-import { config } from "../config.js";
 
 interface CategorizedChannel {
   id: string;
@@ -10,8 +9,8 @@ interface CategorizedChannel {
   category: string | null;
 }
 
-async function fetchAllChannels() {
-  const guild = await client.guilds.fetch(config.discord.guildId);
+async function fetchAllChannels(guildId: string) {
+  const guild = await client.guilds.fetch(guildId);
   return guild.channels.fetch();
 }
 
@@ -20,8 +19,11 @@ async function fetchAllChannels() {
 // channels first), and within each group by the channel's position —
 // instead of a plain alphabetical sort, which scatters channels that are
 // grouped together in Discord across an admin dropdown.
-async function fetchGuildChannels(type: ChannelType.GuildText | ChannelType.GuildVoice): Promise<CategorizedChannel[]> {
-  const channels = await fetchAllChannels();
+async function fetchGuildChannels(
+  guildId: string,
+  type: ChannelType.GuildText | ChannelType.GuildVoice,
+): Promise<CategorizedChannel[]> {
+  const channels = await fetchAllChannels(guildId);
 
   const categories = new Map<string, { name: string; position: number }>();
   for (const c of channels.values()) {
@@ -48,14 +50,14 @@ async function fetchGuildChannels(type: ChannelType.GuildText | ChannelType.Guil
 
 export type GuildTextChannel = CategorizedChannel;
 
-export function fetchGuildTextChannels(): Promise<GuildTextChannel[]> {
-  return fetchGuildChannels(ChannelType.GuildText);
+export function fetchGuildTextChannels(guildId: string): Promise<GuildTextChannel[]> {
+  return fetchGuildChannels(guildId, ChannelType.GuildText);
 }
 
 export type GuildVoiceChannel = CategorizedChannel;
 
-export function fetchGuildVoiceChannels(): Promise<GuildVoiceChannel[]> {
-  return fetchGuildChannels(ChannelType.GuildVoice);
+export function fetchGuildVoiceChannels(guildId: string): Promise<GuildVoiceChannel[]> {
+  return fetchGuildChannels(guildId, ChannelType.GuildVoice);
 }
 
 export interface GuildRole {
@@ -63,8 +65,8 @@ export interface GuildRole {
   name: string;
 }
 
-export async function fetchGuildRoles(): Promise<GuildRole[]> {
-  const guild = await client.guilds.fetch(config.discord.guildId);
+export async function fetchGuildRoles(guildId: string): Promise<GuildRole[]> {
+  const guild = await client.guilds.fetch(guildId);
   const roles = await guild.roles.fetch();
   return roles
     .filter((r) => r.id !== guild.id) // exclude @everyone

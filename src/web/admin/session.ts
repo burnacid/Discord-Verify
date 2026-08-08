@@ -9,6 +9,10 @@ declare module "express-session" {
     username?: string;
     avatar?: string | null;
     oauthState?: string;
+    // The guild this session is currently managing — unset right after
+    // login until either exactly one candidate is found or the admin picks
+    // one at /admin/select-server. See src/web/admin/guildAccess.ts.
+    guildId?: string;
   }
 }
 
@@ -37,9 +41,14 @@ export async function requireAdmin(req: Request, res: Response, next: NextFuncti
     return;
   }
 
+  if (!req.session.guildId) {
+    res.redirect("/admin/select-server");
+    return;
+  }
+
   // Re-check admin status on every request (not just at login) so a
   // revoked Administrator permission takes effect immediately.
-  const stillAdmin = await isAdminMember(discordId);
+  const stillAdmin = await isAdminMember(discordId, req.session.guildId);
   if (!stillAdmin) {
     req.session.destroy(() => {});
     res.redirect("/admin/login");

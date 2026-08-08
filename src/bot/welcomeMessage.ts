@@ -11,8 +11,8 @@ export interface WelcomeSettingsView {
   template: string;
 }
 
-export async function getWelcomeSettings(): Promise<WelcomeSettingsView> {
-  const row = await prisma.welcomeSettings.findUnique({ where: { id: 1 } });
+export async function getWelcomeSettings(guildId: string): Promise<WelcomeSettingsView> {
+  const row = await prisma.welcomeSettings.findUnique({ where: { guildId } });
   return {
     enabled: row?.enabled ?? false,
     channelId: row?.channelId ?? null,
@@ -96,7 +96,7 @@ export async function renderWelcomeTemplate(template: string, member: GuildMembe
 }
 
 export async function sendWelcomeMessage(member: GuildMember): Promise<void> {
-  const settings = await getWelcomeSettings();
+  const settings = await getWelcomeSettings(member.guild.id);
   if (!settings.enabled || !settings.channelId) return;
 
   const channel = await client.channels.fetch(settings.channelId);
