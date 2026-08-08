@@ -21,7 +21,8 @@ verifyPromptRouter.get(
   asyncHandler(async (req, res) => {
     const flash = typeof req.query.flash === "string" ? req.query.flash : undefined;
     const flashKind = parseFlashKind(req.query.flashKind);
-    const [settings, channels] = await Promise.all([getVerifyPromptSettings(), fetchGuildTextChannels()]);
+    const guildId = req.session.guildId!;
+    const [settings, channels] = await Promise.all([getVerifyPromptSettings(guildId), fetchGuildTextChannels(guildId)]);
     res.send(verifyPromptPage(adminUser(req), settings, channels, flash, flashKind));
   }),
 );
@@ -37,9 +38,10 @@ verifyPromptRouter.post(
       return;
     }
 
+    const guildId = req.session.guildId!;
     await prisma.verifyPromptSettings.upsert({
-      where: { id: 1 },
-      create: { id: 1, enabled, channelId: channelId || null },
+      where: { guildId },
+      create: { guildId, enabled, channelId: channelId || null },
       update: { enabled, channelId: channelId || null },
     });
     res.redirect(`/admin/verify-prompt?${flashQuery("Settings saved.")}`);

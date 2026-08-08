@@ -6,8 +6,8 @@ import { renderTemplate, DEFAULT_RSS_TEMPLATE } from "./rssTemplate.js";
 
 const parser = new Parser();
 
-export async function getDefaultTemplate(): Promise<string> {
-  const settings = await prisma.rssSettings.findUnique({ where: { id: 1 } });
+export async function getDefaultTemplate(guildId: string): Promise<string> {
+  const settings = await prisma.rssSettings.findUnique({ where: { guildId } });
   return settings?.defaultTemplate ?? DEFAULT_RSS_TEMPLATE;
 }
 
@@ -20,11 +20,18 @@ function errorMessage(err: unknown): string {
 }
 
 export async function pollRssFeeds(): Promise<void> {
-  const [feeds, defaultTemplate] = await Promise.all([
-    prisma.rssFeed.findMany({ where: { enabled: true } }),
-    getDefaultTemplate(),
-  ]);
+  const feeds = await prisma.rssFeed.findMany({ where: { enabled: true } });
+  // Default template is per-guild now — cache it per guild for this cycle
+  // instead of re-querying it once per feed.
+  const defaultTemplateByGuild = new Map<string, string>();
+
   for (const feed of feeds) {
+    let defaultTemplate = defaultTemplateByGuild.get(feed.guildId);
+    if (defaultTemplate === undefined) {
+      defaultTemplate = await getDefaultTemplate(feed.guildId);
+      defaultTemplateByGuild.set(feed.guildId, defaultTemplate);
+    }
+
     try {
       await pollOneFeed(feed, defaultTemplate);
       await prisma.rssFeed.update({ where: { id: feed.id }, data: { lastCheckedAt: new Date(), lastError: null } });

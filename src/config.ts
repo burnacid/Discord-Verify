@@ -9,15 +9,18 @@ function required(name: string): string {
 }
 
 export const config = {
+  // guildId and its sibling role/channel IDs used to live here as single
+  // global env vars — structurally impossible once the bot serves many
+  // guilds. They're per-guild, admin-configurable DB settings now (see
+  // src/runtimeSettings.ts's verifiedRoleId/startHereChannelId/
+  // modReviewChannelId/auditLogChannelId, set from /admin's "Server setup").
+  // Only the bot's own application-level credentials remain here — one
+  // Discord Application (and its one bot token) can be installed into any
+  // number of guilds simultaneously.
   discord: {
     token: required("DISCORD_TOKEN"),
     clientId: required("DISCORD_CLIENT_ID"),
     clientSecret: required("DISCORD_CLIENT_SECRET"),
-    guildId: required("DISCORD_GUILD_ID"),
-    verifiedRoleId: required("DISCORD_VERIFIED_ROLE_ID"),
-    startHereChannelId: process.env.DISCORD_START_HERE_CHANNEL_ID ?? null,
-    modReviewChannelId: process.env.DISCORD_MOD_REVIEW_CHANNEL_ID ?? null,
-    auditLogChannelId: process.env.DISCORD_AUDIT_LOG_CHANNEL_ID ?? null,
   },
   web: {
     port: Number(process.env.PORT ?? 3000),

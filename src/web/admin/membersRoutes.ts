@@ -3,7 +3,6 @@ import type { MemberStatus } from "@prisma/client";
 import { prisma } from "../../db.js";
 import { verifyMember, unverifyMember } from "../../bot/adminActions.js";
 import { fetchGuildMember, searchGuildMembers } from "../../bot/memberLookup.js";
-import { config } from "../../config.js";
 import { asyncHandler } from "../asyncHandler.js";
 import { requireAdmin } from "./session.js";
 import { membersPage } from "../views/admin/members.js";
@@ -25,6 +24,7 @@ function isValidStatus(value: unknown): value is MemberStatus {
 membersRouter.get(
   "/admin/members",
   asyncHandler(async (req, res) => {
+    const guildId = req.session.guildId!;
     const query = typeof req.query.q === "string" ? req.query.q.trim() : "";
     const flash = typeof req.query.flash === "string" ? req.query.flash : undefined;
     const flashKind = parseFlashKind(req.query.flashKind);
@@ -34,11 +34,11 @@ membersRouter.get(
     let results: MemberRow[] = [];
     let totalPages = 1;
     if (statusFilter) {
-      const { rows, total } = await lookupByStatus(statusFilter, page);
+      const { rows, total } = await lookupByStatus(guildId, statusFilter, page);
       results = rows;
       totalPages = Math.max(1, Math.ceil(total / STATUS_LIST_PAGE_SIZE));
     } else if (query) {
-      results = SNOWFLAKE_RE.test(query) ? await lookupById(query) : await lookupByUsername(query);
+      results = SNOWFLAKE_RE.test(query) ? await lookupById(guildId, query) : await lookupByUsername(guildId, query);
     }
 
     res.send(
@@ -60,7 +60,7 @@ membersRouter.post(
   "/admin/members/:discordId/verify",
   asyncHandler(async (req, res) => {
     const { discordId } = req.params;
-    const result = await verifyMember(discordId, config.discord.guildId, req.session.discordId!, "admin panel");
+    const result = await verifyMember(discordId, req.session.guildId!, req.session.discordId!, "admin panel");
     const flash = result.ok ? "Member verified." : result.reason;
     res.redirect(`/admin/members?q=${encodeURIComponent(discordId)}&${flashQuery(flash, result.ok ? undefined : "error")}`);
   }),
@@ -70,16 +70,16 @@ membersRouter.post(
   "/admin/members/:discordId/unverify",
   asyncHandler(async (req, res) => {
     const { discordId } = req.params;
-    const result = await unverifyMember(discordId, config.discord.guildId, req.session.discordId!, "admin panel");
+    const result = await unverifyMember(discordId, req.session.guildId!, req.session.discordId!, "admin panel");
     const flash = result.ok ? "Member unverified." : result.reason;
     res.redirect(`/admin/members?q=${encodeURIComponent(discordId)}&${flashQuery(flash, result.ok ? undefined : "error")}`);
   }),
 );
 
-async function lookupById(discordId: string): Promise<MemberRow[]> {
+async function lookupById(guildId: string, discordId: string): Promise<MemberRow[]> {
   const [guildMember, dbMember] = await Promise.all([
-    fetchGuildMember(discordId),
-    prisma.member.findUnique({ where: { discordId } }),
+    fetchGuildMember(discordId, guildId),
+    prisma.member.findUnique({ where: { discordId_guildId: { discordId, guildId } } }),
   ]);
 
   if (!guildMember && !dbMember) return [];
@@ -96,12 +96,12 @@ async function lookupById(discordId: string): Promise<MemberRow[]> {
   ];
 }
 
-async function lookupByUsername(query: string): Promise<MemberRow[]> {
-  const guildMembers = await searchGuildMembers(query, 10);
+async function lookupByUsername(guildId: string, query: string): Promise<MemberRow[]> {
+  const guildMembers = await searchGuildMembers(query, guildId, 10);
   if (guildMembers.length === 0) return [];
 
   const dbMembers = await prisma.member.findMany({
-    where: { discordId: { in: guildMembers.map((m) => m.id) } },
+    where: { guildId, discordId: { in: guildMembers.map((m) => m.id) } },
   });
   const dbByid = new Map(dbMembers.map((m) => [m.discordId, m]));
 
@@ -118,20 +118,24 @@ async function lookupByUsername(query: string): Promise<MemberRow[]> {
   });
 }
 
-async function lookupByStatus(status: MemberStatus, page: number): Promise<{ rows: MemberRow[]; total: number }> {
+async function lookupByStatus(
+  guildId: string,
+  status: MemberStatus,
+  page: number,
+): Promise<{ rows: MemberRow[]; total: number }> {
   const [dbMembers, total] = await Promise.all([
     prisma.member.findMany({
-      where: { status },
+      where: { guildId, status },
       orderBy: { createdAt: "desc" },
       take: STATUS_LIST_PAGE_SIZE,
       skip: (page - 1) * STATUS_LIST_PAGE_SIZE,
     }),
-    prisma.member.count({ where: { status } }),
+    prisma.member.count({ where: { guildId, status } }),
   ]);
 
   const rows = await Promise.all(
     dbMembers.map(async (m) => {
-      const guildMember = await fetchGuildMember(m.discordId);
+      const guildMember = await fetchGuildMember(m.discordId, guildId);
       return {
         discordId: m.discordId,
         username: guildMember?.user.username ?? null,

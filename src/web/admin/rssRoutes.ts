@@ -17,15 +17,23 @@ function adminUser(req: { session: { discordId?: string; username?: string } }) 
   return { discordId: req.session.discordId!, username: req.session.username ?? "Admin" };
 }
 
+// A feed's id is a global UUID, so without this an admin of one guild could
+// otherwise edit/test/delete another guild's feed by guessing/reusing an id.
+async function findOwnedFeed(id: string, guildId: string) {
+  const feed = await prisma.rssFeed.findUnique({ where: { id } });
+  return feed && feed.guildId === guildId ? feed : null;
+}
+
 rssRouter.get(
   "/admin/rss",
   asyncHandler(async (req, res) => {
+    const guildId = req.session.guildId!;
     const flash = typeof req.query.flash === "string" ? req.query.flash : undefined;
     const flashKind = parseFlashKind(req.query.flashKind);
     const [feeds, channels, defaultTemplate] = await Promise.all([
-      prisma.rssFeed.findMany({ orderBy: { createdAt: "asc" } }),
-      fetchGuildTextChannels(),
-      getDefaultTemplate(),
+      prisma.rssFeed.findMany({ where: { guildId }, orderBy: { createdAt: "asc" } }),
+      fetchGuildTextChannels(guildId),
+      getDefaultTemplate(guildId),
     ]);
     res.send(rssPage(adminUser(req), feeds, channels, defaultTemplate, flash, flashKind));
   }),
@@ -44,7 +52,7 @@ rssRouter.post(
       return;
     }
 
-    await prisma.rssFeed.create({ data: { name, feedUrl, channelId, template } });
+    await prisma.rssFeed.create({ data: { guildId: req.session.guildId!, name, feedUrl, channelId, template } });
     res.redirect(`/admin/rss?${flashQuery("Feed added.")}`);
   }),
 );
@@ -62,16 +70,16 @@ rssRouter.post(
       return;
     }
 
-    // Changing feedUrl may invalidate lastGuid against the new feed's item
-    // list; the poller's idx===-1 path resyncs without posting on the next
-    // cycle, so no special-casing is needed here.
-    const result = await prisma.rssFeed
-      .update({ where: { id: req.params.id }, data: { name, feedUrl, channelId, template } })
-      .catch(() => null);
-    if (!result) {
+    const existing = await findOwnedFeed(req.params.id, req.session.guildId!);
+    if (!existing) {
       res.redirect(`/admin/rss?${flashQuery("Feed not found.", "error")}`);
       return;
     }
+
+    // Changing feedUrl may invalidate lastGuid against the new feed's item
+    // list; the poller's idx===-1 path resyncs without posting on the next
+    // cycle, so no special-casing is needed here.
+    await prisma.rssFeed.update({ where: { id: existing.id }, data: { name, feedUrl, channelId, template } });
     res.redirect(`/admin/rss?${flashQuery("Feed updated.")}`);
   }),
 );
@@ -79,12 +87,12 @@ rssRouter.post(
 rssRouter.post(
   "/admin/rss/:id/toggle",
   asyncHandler(async (req, res) => {
-    const existing = await prisma.rssFeed.findUnique({ where: { id: req.params.id } });
+    const existing = await findOwnedFeed(req.params.id, req.session.guildId!);
     if (!existing) {
       res.redirect(`/admin/rss?${flashQuery("Feed not found.", "error")}`);
       return;
     }
-    await prisma.rssFeed.update({ where: { id: req.params.id }, data: { enabled: !existing.enabled } });
+    await prisma.rssFeed.update({ where: { id: existing.id }, data: { enabled: !existing.enabled } });
     res.redirect(`/admin/rss?${flashQuery(existing.enabled ? "Feed disabled." : "Feed enabled.")}`);
   }),
 );
@@ -92,14 +100,17 @@ rssRouter.post(
 rssRouter.get(
   "/admin/rss/:id/test",
   asyncHandler(async (req, res) => {
-    const feed = await prisma.rssFeed.findUnique({ where: { id: req.params.id } });
+    const feed = await findOwnedFeed(req.params.id, req.session.guildId!);
     if (!feed) {
       res.status(404).send(notFoundPage());
       return;
     }
     const flash = typeof req.query.flash === "string" ? req.query.flash : undefined;
     const flashKind = parseFlashKind(req.query.flashKind);
-    const [items, defaultTemplate] = await Promise.all([fetchFeedItems(feed.feedUrl), getDefaultTemplate()]);
+    const [items, defaultTemplate] = await Promise.all([
+      fetchFeedItems(feed.feedUrl),
+      getDefaultTemplate(feed.guildId),
+    ]);
     res.send(rssTestPage(adminUser(req), feed, items, defaultTemplate, flash, flashKind));
   }),
 );
@@ -107,7 +118,7 @@ rssRouter.get(
 rssRouter.post(
   "/admin/rss/:id/test",
   asyncHandler(async (req, res) => {
-    const feed = await prisma.rssFeed.findUnique({ where: { id: req.params.id } });
+    const feed = await findOwnedFeed(req.params.id, req.session.guildId!);
     if (!feed) {
       res.status(404).send(notFoundPage());
       return;
@@ -122,7 +133,7 @@ rssRouter.post(
 
     // Deliberately does not touch lastGuid/lastPostedAt — this is a manual
     // test post, not part of the normal dedup-tracked posting flow.
-    await postItem(feed, item, await getDefaultTemplate());
+    await postItem(feed, item, await getDefaultTemplate(feed.guildId));
     res.redirect(`/admin/rss/${feed.id}/test?${flashQuery(`Posted "${item.title ?? "item"}" to the channel.`)}`);
   }),
 );
@@ -135,9 +146,10 @@ rssRouter.post(
       res.status(400).send(errorPage("Invalid template", "The default template can't be empty."));
       return;
     }
+    const guildId = req.session.guildId!;
     await prisma.rssSettings.upsert({
-      where: { id: 1 },
-      create: { id: 1, defaultTemplate },
+      where: { guildId },
+      create: { guildId, defaultTemplate },
       update: { defaultTemplate },
     });
     res.redirect(`/admin/rss?${flashQuery("Default template saved.")}`);
@@ -148,6 +160,8 @@ rssRouter.post(
   "/admin/rss/check",
   asyncHandler(async (req, res) => {
     try {
+      // Polls every guild's feeds, not just this one — fine for a manual
+      // trigger, and matches what the background job does anyway.
       await pollRssFeeds();
       res.redirect(`/admin/rss?${flashQuery("Checked all feeds for new posts.")}`);
     } catch (err) {
@@ -160,7 +174,10 @@ rssRouter.post(
 rssRouter.post(
   "/admin/rss/:id/delete",
   asyncHandler(async (req, res) => {
-    await prisma.rssFeed.delete({ where: { id: req.params.id } }).catch(() => {});
+    const existing = await findOwnedFeed(req.params.id, req.session.guildId!);
+    if (existing) {
+      await prisma.rssFeed.delete({ where: { id: existing.id } }).catch(() => {});
+    }
     res.redirect(`/admin/rss?${flashQuery("Feed deleted.")}`);
   }),
 );

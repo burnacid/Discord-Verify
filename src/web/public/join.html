@@ -83,7 +83,11 @@
     <script>
       (async () => {
         try {
-          const res = await fetch("/join/invite");
+          // Path is /join/:guildId — this same static file is served for
+          // every guild, so the guild is read from the URL rather than
+          // hardcoded.
+          const guildId = window.location.pathname.split("/")[2];
+          const res = await fetch(`/join/${guildId}/invite`);
           if (!res.ok) throw new Error("bad response");
           const { url } = await res.json();
           window.location.replace(url);

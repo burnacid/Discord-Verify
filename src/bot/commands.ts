@@ -23,10 +23,14 @@ export const commands = [
     .setDefaultMemberPermissions(PermissionFlagsBits.ManageRoles),
 ].map((c) => c.toJSON());
 
-export async function registerCommands(): Promise<void> {
+// Registered per guild (not globally) — called from the guildCreate handler
+// when the bot joins a new server, and again from the startup reconciliation
+// pass for every guild already known, so commands stay in sync without the
+// ~1h propagation delay global command registration would add.
+export async function registerCommands(guildId: string): Promise<void> {
   const rest = new REST().setToken(config.discord.token);
   await rest.put(
-    Routes.applicationGuildCommands(config.discord.clientId, config.discord.guildId),
+    Routes.applicationGuildCommands(config.discord.clientId, guildId),
     { body: commands },
   );
 }

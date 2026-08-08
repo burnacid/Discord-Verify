@@ -1,12 +1,13 @@
 import { EmbedBuilder } from "discord.js";
 import { client } from "./client.js";
-import { config } from "../config.js";
+import { getRuntimeSettings } from "../runtimeSettings.js";
 
-export async function postAuditLog(description: string): Promise<void> {
-  if (!config.discord.auditLogChannelId) return;
+export async function postAuditLog(guildId: string, description: string): Promise<void> {
+  const auditLogChannelId = getRuntimeSettings(guildId).auditLogChannelId;
+  if (!auditLogChannelId) return;
 
   try {
-    const channel = await client.channels.fetch(config.discord.auditLogChannelId);
+    const channel = await client.channels.fetch(auditLogChannelId);
     if (!channel?.isTextBased() || channel.isThread() || channel.isDMBased()) return;
 
     const embed = new EmbedBuilder().setDescription(description).setColor(0x5865f2).setTimestamp();

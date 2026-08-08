@@ -4,22 +4,22 @@ import { config } from "../config.js";
 import { prisma } from "../db.js";
 
 /**
- * Returns a still-valid (<1h old) invite URL for the configured guild,
- * reusing a cached one if it hasn't expired yet, otherwise minting a fresh
- * one via the Discord API.
+ * Returns a still-valid (<1h old) invite URL for the given guild, reusing a
+ * cached one if it hasn't expired yet, otherwise minting a fresh one via
+ * the Discord API.
  */
-export async function getOrCreateJoinInvite(): Promise<string> {
+export async function getOrCreateJoinInvite(guildId: string): Promise<string> {
   const now = new Date();
 
   const cached = await prisma.inviteLink.findFirst({
-    where: { guildId: config.discord.guildId, expiresAt: { gt: now } },
+    where: { guildId, expiresAt: { gt: now } },
     orderBy: { createdAt: "desc" },
   });
   if (cached) {
     return `https://discord.gg/${cached.code}`;
   }
 
-  const guild = await client.guilds.fetch(config.discord.guildId);
+  const guild = await client.guilds.fetch(guildId);
   const channels = await guild.channels.fetch();
   const textChannel = channels.find((c) => c?.type === ChannelType.GuildText);
   if (!textChannel) {
@@ -35,7 +35,7 @@ export async function getOrCreateJoinInvite(): Promise<string> {
   await prisma.inviteLink.create({
     data: {
       code: invite.code,
-      guildId: config.discord.guildId,
+      guildId,
       expiresAt: new Date(now.getTime() + config.invite.ttlSeconds * 1000),
     },
   });

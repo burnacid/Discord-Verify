@@ -3,21 +3,23 @@ import { PermissionFlagsBits } from "discord.js";
 import { client } from "./client.js";
 import { config } from "../config.js";
 import { prisma } from "../db.js";
+import { getRuntimeSettings } from "../runtimeSettings.js";
 
 export async function ensureMember(discordId: string, guildId: string) {
   return prisma.member.upsert({
-    where: { discordId },
+    where: { discordId_guildId: { discordId, guildId } },
     update: {},
     create: { discordId, guildId },
   });
 }
 
-export async function issueVerificationToken(discordId: string): Promise<string> {
+export async function issueVerificationToken(discordId: string, guildId: string): Promise<string> {
   const token = randomUUID();
   await prisma.verificationToken.create({
     data: {
       token,
       discordId,
+      guildId,
       expiresAt: new Date(Date.now() + config.verification.tokenTtlMs),
     },
   });
@@ -33,12 +35,12 @@ export async function getVerifyStatusMessage(discordId: string, guildId: string)
   const member = await ensureMember(discordId, guildId);
 
   if (member.status === "verified") {
-    if (await hasVerifiedRole(discordId)) {
+    if (await hasVerifiedRole(discordId, guildId)) {
       return "You're already verified.";
     }
     // DB says verified but the role is missing (e.g. a prior role assignment failed) — retry.
     try {
-      await assignVerifiedRole(discordId);
+      await assignVerifiedRole(discordId, guildId);
       return "You're verified! The Verified role has been re-applied.";
     } catch (err) {
       console.error("Failed to re-apply verified role", err);
@@ -50,7 +52,7 @@ export async function getVerifyStatusMessage(discordId: string, guildId: string)
     return "Your verification is already pending moderator review.";
   }
 
-  const token = await issueVerificationToken(discordId);
+  const token = await issueVerificationToken(discordId, guildId);
   const link = `${config.web.publicBaseUrl}/verify/${token}`;
   return `Verify here (link expires in 24 hours): ${link}`;
 }
@@ -73,32 +75,41 @@ export async function sendVerificationDm(discordId: string, token: string): Prom
   );
 }
 
-export async function postStartHereFallback(discordId: string, token: string): Promise<void> {
-  if (!config.discord.startHereChannelId) return;
+export async function postStartHereFallback(discordId: string, guildId: string, token: string): Promise<void> {
+  const startHereChannelId = getRuntimeSettings(guildId).startHereChannelId;
+  if (!startHereChannelId) return;
   const link = `${config.web.publicBaseUrl}/verify/${token}`;
-  const channel = await client.channels.fetch(config.discord.startHereChannelId);
+  const channel = await client.channels.fetch(startHereChannelId);
   if (channel?.isTextBased() && !channel.isThread() && !channel.isDMBased()) {
     await channel.send(`<@${discordId}> please enable DMs, or verify here: ${link}`);
   }
 }
 
-export async function assignVerifiedRole(discordId: string): Promise<void> {
-  const guild = await client.guilds.fetch(config.discord.guildId);
-  const member = await guild.members.fetch(discordId);
-  await member.roles.add(config.discord.verifiedRoleId);
+function requireVerifiedRoleId(guildId: string): string {
+  const roleId = getRuntimeSettings(guildId).verifiedRoleId;
+  if (!roleId) {
+    throw new Error(`Guild ${guildId} has no verified role configured yet — set one in /admin`);
+  }
+  return roleId;
 }
 
-export async function hasVerifiedRole(discordId: string): Promise<boolean> {
-  const guild = await client.guilds.fetch(config.discord.guildId);
+export async function assignVerifiedRole(discordId: string, guildId: string): Promise<void> {
+  const guild = await client.guilds.fetch(guildId);
   const member = await guild.members.fetch(discordId);
-  return member.roles.cache.has(config.discord.verifiedRoleId);
+  await member.roles.add(requireVerifiedRoleId(guildId));
+}
+
+export async function hasVerifiedRole(discordId: string, guildId: string): Promise<boolean> {
+  const guild = await client.guilds.fetch(guildId);
+  const member = await guild.members.fetch(discordId);
+  return member.roles.cache.has(requireVerifiedRoleId(guildId));
 }
 
 /** Discord API code for "member not found in this guild" (e.g. they left). */
 const UNKNOWN_MEMBER_CODE = 10_007;
 
-export async function removeVerifiedRole(discordId: string): Promise<void> {
-  const guild = await client.guilds.fetch(config.discord.guildId);
+export async function removeVerifiedRole(discordId: string, guildId: string): Promise<void> {
+  const guild = await client.guilds.fetch(guildId);
   let member;
   try {
     member = await guild.members.fetch(discordId);
@@ -106,11 +117,11 @@ export async function removeVerifiedRole(discordId: string): Promise<void> {
     if (isDiscordErrorCode(err, UNKNOWN_MEMBER_CODE)) return;
     throw err;
   }
-  await member.roles.remove(config.discord.verifiedRoleId);
+  await member.roles.remove(requireVerifiedRoleId(guildId));
 }
 
-export async function isAdminMember(discordId: string): Promise<boolean> {
-  const guild = await client.guilds.fetch(config.discord.guildId);
+export async function isAdminMember(discordId: string, guildId: string): Promise<boolean> {
+  const guild = await client.guilds.fetch(guildId);
   try {
     const member = await guild.members.fetch(discordId);
     return member.permissions.has(PermissionFlagsBits.Administrator);
@@ -120,8 +131,8 @@ export async function isAdminMember(discordId: string): Promise<boolean> {
   }
 }
 
-export async function kickMember(discordId: string, reason?: string): Promise<void> {
-  const guild = await client.guilds.fetch(config.discord.guildId);
+export async function kickMember(discordId: string, guildId: string, reason?: string): Promise<void> {
+  const guild = await client.guilds.fetch(guildId);
   try {
     await guild.members.kick(discordId, reason);
   } catch (err) {

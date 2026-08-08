@@ -18,11 +18,12 @@ function adminUser(req: { session: { discordId?: string; username?: string } }) 
 jtcRouter.get(
   "/admin/jtc",
   asyncHandler(async (req, res) => {
+    const guildId = req.session.guildId!;
     const flash = typeof req.query.flash === "string" ? req.query.flash : undefined;
     const flashKind = parseFlashKind(req.query.flashKind);
     const [triggers, channels] = await Promise.all([
-      prisma.jtcTrigger.findMany({ orderBy: { createdAt: "asc" } }),
-      fetchGuildVoiceChannels(),
+      prisma.jtcTrigger.findMany({ where: { guildId }, orderBy: { createdAt: "asc" } }),
+      fetchGuildVoiceChannels(guildId),
     ]);
     const activeCounts = await Promise.all(
       triggers.map((t) => prisma.jtcChannel.count({ where: { triggerId: t.id } })),
@@ -36,6 +37,7 @@ jtcRouter.get(
 jtcRouter.post(
   "/admin/jtc",
   asyncHandler(async (req, res) => {
+    const guildId = req.session.guildId!;
     const name = typeof req.body?.name === "string" ? req.body.name.trim() : "";
     const channelId = typeof req.body?.channelId === "string" ? req.body.channelId.trim() : "";
 
@@ -50,7 +52,7 @@ jtcRouter.post(
       return;
     }
 
-    await prisma.jtcTrigger.create({ data: { name, channelId } });
+    await prisma.jtcTrigger.create({ data: { guildId, name, channelId } });
     res.redirect(`/admin/jtc?${flashQuery("Trigger added.")}`);
   }),
 );
@@ -59,8 +61,9 @@ jtcRouter.post(
   "/admin/jtc/:id/delete",
   asyncHandler(async (req, res) => {
     // Only removes the trigger row — channels it already spawned are left
-    // running and get cleaned up normally once they empty out.
-    await prisma.jtcTrigger.delete({ where: { id: req.params.id } }).catch(() => {});
+    // running and get cleaned up normally once they empty out. Guild-scoped
+    // delete so an admin can't delete another guild's trigger by id.
+    await prisma.jtcTrigger.deleteMany({ where: { id: req.params.id, guildId: req.session.guildId! } });
     res.redirect(`/admin/jtc?${flashQuery("Trigger deleted.")}`);
   }),
 );

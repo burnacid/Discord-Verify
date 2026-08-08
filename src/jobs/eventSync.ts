@@ -3,7 +3,6 @@ import type { Guild } from "discord.js";
 import type { EventSource } from "@prisma/client";
 import { prisma } from "../db.js";
 import { client } from "../bot/client.js";
-import { config } from "../config.js";
 
 // Common shape every provider normalizes its API response into, so the
 // create/update/delete sync logic below doesn't need to know which
@@ -352,7 +351,7 @@ export async function deleteAllEventsForSource(source: EventSource): Promise<voi
   const rows = await prisma.eventSourceItem.findMany({ where: { sourceId: source.id } });
   if (rows.length === 0) return;
 
-  const guild = await client.guilds.fetch(config.discord.guildId);
+  const guild = await client.guilds.fetch(source.guildId);
   for (const row of rows) {
     await guild.scheduledEvents.delete(row.discordEventId).catch(() => {});
     await deleteEventMessage(source, row.messageId);
@@ -366,7 +365,7 @@ export async function syncEventSource(source: EventSource): Promise<void> {
   const items = allItems.filter((item) => matchesNameFilter(item.name, source.nameFilter, source.nameFilterMode));
   const itemsById = new Map(items.map((item) => [item.externalId, item]));
 
-  const guild = await client.guilds.fetch(config.discord.guildId);
+  const guild = await client.guilds.fetch(source.guildId);
   const tracked = await prisma.eventSourceItem.findMany({ where: { sourceId: source.id } });
 
   const now = Date.now();
@@ -450,6 +449,7 @@ export async function syncEventSource(source: EventSource): Promise<void> {
       const messageId = await upsertEventMessage(source, null, item);
       await prisma.eventSourceItem.create({
         data: {
+          guildId: source.guildId,
           sourceId: source.id,
           externalId: item.externalId,
           discordEventId,

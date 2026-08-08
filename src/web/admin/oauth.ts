@@ -1,9 +1,10 @@
 import { randomBytes } from "node:crypto";
 import { Router } from "express";
 import { config } from "../../config.js";
-import { isAdminMember } from "../../bot/verificationService.js";
 import { asyncHandler } from "../asyncHandler.js";
 import { errorPage } from "../views/verifyPages.js";
+import { listAdminGuilds } from "./guildAccess.js";
+import { buildBotInviteUrl } from "./selectServerRoutes.js";
 
 export const oauthRouter = Router();
 
@@ -71,13 +72,15 @@ oauthRouter.get(
     }
     const user = (await userRes.json()) as DiscordUser;
 
-    if (!(await isAdminMember(user.id))) {
+    const adminGuilds = await listAdminGuilds(user.id);
+    if (adminGuilds.length === 0) {
       res
         .status(403)
         .send(
           errorPage(
             "Access denied",
-            "Your Discord account doesn't have Administrator permission in this server.",
+            "Your Discord account doesn't have Administrator permission in any server this bot manages. " +
+              `<a href="${buildBotInviteUrl()}">Add the bot to a server</a> you administer, then log in again.`,
           ),
         );
       return;
@@ -86,8 +89,11 @@ oauthRouter.get(
     req.session.discordId = user.id;
     req.session.username = user.username;
     req.session.avatar = user.avatar;
+    // Skip the picker when there's only one candidate — most admins manage
+    // exactly one server.
+    req.session.guildId = adminGuilds.length === 1 ? adminGuilds[0].id : undefined;
 
-    res.redirect("/admin");
+    res.redirect(req.session.guildId ? "/admin" : "/admin/select-server");
   }),
 );
 

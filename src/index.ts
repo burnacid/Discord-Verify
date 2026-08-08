@@ -1,8 +1,9 @@
 import type { Server } from "node:http";
 import { config } from "./config.js";
 import { client, startBot } from "./bot/client.js";
-import { registerCommands } from "./bot/commands.js";
 import "./bot/events/guildMemberAdd.js";
+import "./bot/events/guildCreate.js";
+import { provisionGuild } from "./bot/events/guildCreate.js";
 import "./bot/events/interactionCreate.js";
 import "./bot/events/messageCreate.js";
 import { sweepEmptyJtcChannels } from "./bot/events/voiceStateUpdate.js";
@@ -33,17 +34,20 @@ async function main() {
 
   client.once("clientReady", () => {
     console.log(`Bot logged in as ${client.user?.tag}`);
+
+    // Reconciliation pass: covers guilds added while the bot was offline,
+    // and — the first time this runs after deploying multi-guild support —
+    // bootstraps whatever guild(s) were already installed into the new
+    // Guild/Settings tables and re-registers their commands. Not awaited
+    // here (clientReady is a sync-style listener); errors per guild are
+    // caught individually inside provisionGuild's caller below.
+    for (const guild of client.guilds.cache.values()) {
+      provisionGuild(guild, false).catch((err) =>
+        console.error(`Startup reconciliation failed for guild ${guild.id} (${guild.name})`, err),
+      );
+    }
   });
   await startBot();
-  try {
-    await registerCommands();
-  } catch (err) {
-    // Don't let a slash-command registration failure (e.g. the bot was
-    // invited without the applications.commands scope) take down the whole
-    // process — DMs, the review queue, and the web server all work fine
-    // without it, so just log and keep going.
-    console.error("Failed to register slash commands, continuing without them", err);
-  }
 
   // Clean up any Join-to-Create channels that emptied out while the bot was
   // offline — the live voiceStateUpdate handler covers normal operation.
