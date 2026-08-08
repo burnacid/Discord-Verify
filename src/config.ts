@@ -21,6 +21,10 @@ export const config = {
     token: required("DISCORD_TOKEN"),
     clientId: required("DISCORD_CLIENT_ID"),
     clientSecret: required("DISCORD_CLIENT_SECRET"),
+    // Kill switch for accepting new installs while still serving guilds the
+    // bot is already in — flip on to stop growth (e.g. mid-incident, or once
+    // a capacity/invite-only limit is reached) without taking the bot offline.
+    allowNewGuilds: process.env.DISALLOW_NEW_GUILDS !== "true",
   },
   web: {
     port: Number(process.env.PORT ?? 3000),

@@ -657,6 +657,11 @@ code {
   text-align: left;
   cursor: pointer;
 }
+/* Same fix as .channel-picker-menu above: an unconditional `display: flex`
+   outranks the UA [hidden] rule, so filtered-out options stayed visible. */
+.channel-picker-option[hidden] {
+  display: none;
+}
 .channel-picker-option svg {
   flex-shrink: 0;
   color: var(--text-faint);

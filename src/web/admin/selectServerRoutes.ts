@@ -20,6 +20,17 @@ export function buildBotInviteUrl(): string {
   return url.toString();
 }
 
+// Shared by both "you're not an admin anywhere" pages below (this route's
+// GET and src/web/admin/oauth.ts's login callback) — omits the invite link
+// entirely when DISALLOW_NEW_GUILDS is set, since offering it would just
+// lead to the bot immediately leaving whatever server they add it to.
+export function noAdminGuildsMessage(): string {
+  const inviteHint = config.discord.allowNewGuilds
+    ? ` <a href="${buildBotInviteUrl()}">Add the bot to a server</a> you administer, then log in again.`
+    : "";
+  return "Your Discord account doesn't have Administrator permission in any server this bot manages." + inviteHint;
+}
+
 // Deliberately lighter than requireAdmin — only needs discordId (from
 // OAuth login), not guildId, since picking/switching the guild is exactly
 // what this route is for.
@@ -36,15 +47,7 @@ selectServerRouter.get(
   asyncHandler(async (req, res) => {
     const guilds = await listAdminGuilds(req.session.discordId!);
     if (guilds.length === 0) {
-      res
-        .status(403)
-        .send(
-          errorPage(
-            "Access denied",
-            "Your Discord account doesn't have Administrator permission in any server this bot manages. " +
-              `<a href="${buildBotInviteUrl()}">Add the bot to a server</a> you administer, then log in again.`,
-          ),
-        );
+      res.status(403).send(errorPage("Access denied", noAdminGuildsMessage()));
       return;
     }
     res.send(
@@ -52,7 +55,7 @@ selectServerRouter.get(
         { discordId: req.session.discordId!, username: req.session.username ?? "Admin" },
         guilds,
         req.session.guildId,
-        buildBotInviteUrl(),
+        config.discord.allowNewGuilds ? buildBotInviteUrl() : null,
       ),
     );
   }),
