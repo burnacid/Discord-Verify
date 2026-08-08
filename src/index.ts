@@ -3,7 +3,8 @@ import { config } from "./config.js";
 import { client, startBot } from "./bot/client.js";
 import "./bot/events/guildMemberAdd.js";
 import "./bot/events/guildCreate.js";
-import { provisionGuild } from "./bot/events/guildCreate.js";
+import { handleGuildJoin } from "./bot/events/guildCreate.js";
+import "./bot/events/guildDelete.js";
 import "./bot/events/interactionCreate.js";
 import "./bot/events/messageCreate.js";
 import { sweepEmptyJtcChannels } from "./bot/events/voiceStateUpdate.js";
@@ -42,7 +43,7 @@ async function main() {
     // here (clientReady is a sync-style listener); errors per guild are
     // caught individually inside provisionGuild's caller below.
     for (const guild of client.guilds.cache.values()) {
-      provisionGuild(guild, false).catch((err) =>
+      handleGuildJoin(guild, false).catch((err) =>
         console.error(`Startup reconciliation failed for guild ${guild.id} (${guild.name})`, err),
       );
     }

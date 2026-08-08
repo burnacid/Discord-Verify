@@ -14,7 +14,7 @@ export function selectServerPage(
   user: AdminUser,
   guilds: AdminGuild[],
   currentGuildId: string | undefined,
-  inviteUrl: string,
+  inviteUrl: string | null,
 ): string {
   const body = `
     <h1>Choose a server</h1>
@@ -34,11 +34,15 @@ export function selectServerPage(
         .join("")}
     </div>
 
-    <h2>Add another server</h2>
+    ${
+      inviteUrl
+        ? `<h2>Add another server</h2>
     <div class="card">
       <p class="hint" style="margin-bottom:16px;">Invite this bot to a different server you administer — it'll show up in the list above once it's in.</p>
       <a class="btn btn-primary" href="${inviteUrl}" target="_blank" rel="noopener">Add to a server</a>
-    </div>
+    </div>`
+        : ""
+    }
   `;
 
   return renderAdminPage("Choose a server", user, body);

@@ -7,24 +7,32 @@ import { registerCommands } from "../commands.js";
 
 client.on("guildCreate", async (guild: Guild) => {
   try {
-    if (!config.discord.allowNewGuilds) {
-      const existing = await prisma.guild.findUnique({ where: { id: guild.id } });
-      if (!existing) {
-        console.log(`New guild joins are disabled (DISALLOW_NEW_GUILDS=true) — leaving ${guild.id} (${guild.name})`);
-        await guild.leave().catch((err) => console.error(`Failed to leave rejected guild ${guild.id}`, err));
-        return;
-      }
-    }
-    await provisionGuild(guild, true);
+    await handleGuildJoin(guild, true);
   } catch (err) {
     console.error(`Failed to provision newly-joined guild ${guild.id} (${guild.name})`, err);
   }
 });
 
 // Shared by the guildCreate event above and the startup reconciliation pass
-// in src/index.ts (which covers guilds added while the bot was offline, and
-// bootstraps whatever guild(s) already existed the first time this feature
-// is deployed). Idempotent — safe to call repeatedly for the same guild.
+// in src/index.ts. The reconciliation pass matters here too, not just for
+// catch-up: Discord grants a bot-add server-side as soon as it's authorized,
+// independent of whether the bot's gateway connection is currently up — a
+// server added right around a restart can end up in the initial READY guild
+// list instead of firing guildCreate, which would silently bypass the
+// DISALLOW_NEW_GUILDS check if only the event handler enforced it.
+export async function handleGuildJoin(guild: Guild, announceIfNew: boolean): Promise<void> {
+  if (!config.discord.allowNewGuilds) {
+    const existing = await prisma.guild.findUnique({ where: { id: guild.id } });
+    if (!existing) {
+      console.log(`New guild joins are disabled (DISALLOW_NEW_GUILDS=true) — leaving ${guild.id} (${guild.name})`);
+      await guild.leave().catch((err) => console.error(`Failed to leave rejected guild ${guild.id}`, err));
+      return;
+    }
+  }
+  await provisionGuild(guild, announceIfNew);
+}
+
+// Idempotent — safe to call repeatedly for the same guild.
 export async function provisionGuild(guild: Guild, announceIfNew: boolean): Promise<void> {
   const existing = await prisma.guild.findUnique({ where: { id: guild.id } });
 

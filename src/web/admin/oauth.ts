@@ -4,7 +4,7 @@ import { config } from "../../config.js";
 import { asyncHandler } from "../asyncHandler.js";
 import { errorPage } from "../views/verifyPages.js";
 import { listAdminGuilds } from "./guildAccess.js";
-import { buildBotInviteUrl } from "./selectServerRoutes.js";
+import { noAdminGuildsMessage } from "./selectServerRoutes.js";
 
 export const oauthRouter = Router();
 
@@ -74,15 +74,7 @@ oauthRouter.get(
 
     const adminGuilds = await listAdminGuilds(user.id);
     if (adminGuilds.length === 0) {
-      res
-        .status(403)
-        .send(
-          errorPage(
-            "Access denied",
-            "Your Discord account doesn't have Administrator permission in any server this bot manages. " +
-              `<a href="${buildBotInviteUrl()}">Add the bot to a server</a> you administer, then log in again.`,
-          ),
-        );
+      res.status(403).send(errorPage("Access denied", noAdminGuildsMessage()));
       return;
     }
 
