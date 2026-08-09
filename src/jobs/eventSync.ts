@@ -3,6 +3,7 @@ import type { Guild } from "discord.js";
 import type { EventSource } from "@prisma/client";
 import { prisma } from "../db.js";
 import { client } from "../bot/client.js";
+import { runTracked } from "./jobTracking.js";
 
 // Common shape every provider normalizes its API response into, so the
 // create/update/delete sync logic below doesn't need to know which
@@ -489,9 +490,13 @@ export async function syncAllEventSources(): Promise<void> {
   }
 }
 
+export function runOnce(): Promise<void> {
+  return runTracked("eventSync", syncAllEventSources);
+}
+
 export function startEventSyncJob(intervalMs: number): NodeJS.Timeout {
-  syncAllEventSources().catch((err) => console.error("Event sync job failed", err));
+  runOnce().catch((err) => console.error("Event sync job failed", err));
   return setInterval(() => {
-    syncAllEventSources().catch((err) => console.error("Event sync job failed", err));
+    runOnce().catch((err) => console.error("Event sync job failed", err));
   }, intervalMs);
 }

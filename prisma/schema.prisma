@@ -107,6 +107,18 @@ model Settings {
   updatedAt        DateTime @updatedAt
 }
 
+// One row per background job (keyed by the same string each job registers
+// itself under in src/jobs/registry.ts), tracking its most recent run for
+// the admin "Scheduled Tasks" page — updated by runTracked() (src/jobs/
+// jobTracking.ts) on every scheduled tick and every manual "Run now".
+model JobRun {
+  key           String    @id
+  lastRunAt     DateTime?
+  lastSuccessAt DateTime?
+  lastError     String?   @db.Text
+  lastDurationMs Int?
+}
+
 model RssFeed {
   id           String    @id @default(uuid())
   guildId      String

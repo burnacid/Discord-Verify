@@ -13,6 +13,7 @@ import { startCleanupJob } from "./jobs/cleanup.js";
 import { startRssPollerJob } from "./jobs/rssPoller.js";
 import { startEventSyncJob } from "./jobs/eventSync.js";
 import { startGeoUpdaterJob } from "./jobs/geoUpdater.js";
+import { startRoleSyncJob } from "./jobs/roleSync.js";
 import { refreshGeoData } from "./geo/updater.js";
 import { prisma } from "./db.js";
 import { initRuntimeSettings } from "./runtimeSettings.js";
@@ -22,6 +23,7 @@ const CLEANUP_INTERVAL_MS = 60 * 60 * 1000;
 const RSS_POLL_INTERVAL_MS = 5 * 60 * 1000;
 const EVENT_SYNC_INTERVAL_MS = 5 * 60 * 1000;
 const GEO_UPDATE_INTERVAL_MS = 12 * 60 * 60 * 1000;
+const ROLE_SYNC_INTERVAL_MS = 60 * 60 * 1000;
 
 function closeServer(server: Server): Promise<void> {
   return new Promise((resolve) => server.close(() => resolve()));
@@ -58,6 +60,7 @@ async function main() {
   const rssPollerInterval = startRssPollerJob(RSS_POLL_INTERVAL_MS);
   const eventSyncInterval = startEventSyncJob(EVENT_SYNC_INTERVAL_MS);
   const geoUpdaterInterval = startGeoUpdaterJob(GEO_UPDATE_INTERVAL_MS);
+  const roleSyncInterval = startRoleSyncJob(ROLE_SYNC_INTERVAL_MS);
 
   const app = createApp();
   // Bind to localhost only — this app is meant to sit behind a reverse
@@ -76,6 +79,7 @@ async function main() {
     clearInterval(rssPollerInterval);
     clearInterval(eventSyncInterval);
     clearInterval(geoUpdaterInterval);
+    clearInterval(roleSyncInterval);
     await closeServer(server);
     await prisma.$disconnect();
     await client.destroy();
