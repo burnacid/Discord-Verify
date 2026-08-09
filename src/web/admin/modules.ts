@@ -5,6 +5,7 @@ import { welcomeRouter } from "./welcomeRoutes.js";
 import { eventsRouter } from "./eventsRoutes.js";
 import { geoRouter } from "./geoRoutes.js";
 import { verifyPromptRouter } from "./verifyPromptRoutes.js";
+import { jobsRouter } from "./jobsRoutes.js";
 import { ICONS } from "../views/admin/icons.js";
 
 registerAdminModule({ key: "rss", label: "RSS Feeds", navPath: "/admin/rss", router: rssRouter, icon: ICONS.rss });
@@ -30,5 +31,12 @@ registerAdminModule({
   navPath: "/admin/verify-prompt",
   router: verifyPromptRouter,
   icon: ICONS.checkCircle,
+});
+registerAdminModule({
+  key: "jobs",
+  label: "Scheduled Tasks",
+  navPath: "/admin/jobs",
+  router: jobsRouter,
+  icon: ICONS.clock,
 });
 // Next module: registerAdminModule({ key: "foo", label: "Foo", navPath: "/admin/foo", router: fooRouter, icon: ICONS.dashboard });

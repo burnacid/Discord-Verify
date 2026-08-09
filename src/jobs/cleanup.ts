@@ -1,5 +1,6 @@
 import { prisma } from "../db.js";
 import { sweepEmptyJtcChannels } from "../bot/events/voiceStateUpdate.js";
+import { runTracked } from "./jobTracking.js";
 
 export async function cleanupExpiredRecords(): Promise<void> {
   const now = new Date();
@@ -22,9 +23,13 @@ export async function cleanupExpiredRecords(): Promise<void> {
   await sweepEmptyJtcChannels().catch((err) => console.error("JTC sweep during cleanup failed", err));
 }
 
+export function runOnce(): Promise<void> {
+  return runTracked("cleanup", cleanupExpiredRecords);
+}
+
 export function startCleanupJob(intervalMs: number): NodeJS.Timeout {
-  cleanupExpiredRecords().catch((err) => console.error("Cleanup job failed", err));
+  runOnce().catch((err) => console.error("Cleanup job failed", err));
   return setInterval(() => {
-    cleanupExpiredRecords().catch((err) => console.error("Cleanup job failed", err));
+    runOnce().catch((err) => console.error("Cleanup job failed", err));
   }, intervalMs);
 }

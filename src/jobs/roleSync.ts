@@ -2,6 +2,7 @@ import { prisma } from "../db.js";
 import { client } from "../bot/client.js";
 import { getRuntimeSettings } from "../runtimeSettings.js";
 import { postAuditLog } from "../bot/auditLog.js";
+import { runTracked } from "./jobTracking.js";
 
 // Reconciles Member.status with actual Discord role membership. Verification
 // is normally set via verifyMember()/unverifyMember() (adminActions.ts),
@@ -64,9 +65,13 @@ export async function syncAllGuildsVerifiedRole(): Promise<void> {
   }
 }
 
+export function runOnce(): Promise<void> {
+  return runTracked("roleSync", syncAllGuildsVerifiedRole);
+}
+
 export function startRoleSyncJob(intervalMs: number): NodeJS.Timeout {
-  syncAllGuildsVerifiedRole().catch((err) => console.error("Role sync job failed", err));
+  runOnce().catch((err) => console.error("Role sync job failed", err));
   return setInterval(() => {
-    syncAllGuildsVerifiedRole().catch((err) => console.error("Role sync job failed", err));
+    runOnce().catch((err) => console.error("Role sync job failed", err));
   }, intervalMs);
 }

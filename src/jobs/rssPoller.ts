@@ -3,6 +3,7 @@ import type { RssFeed } from "@prisma/client";
 import { prisma } from "../db.js";
 import { client } from "../bot/client.js";
 import { renderTemplate, DEFAULT_RSS_TEMPLATE } from "./rssTemplate.js";
+import { runTracked } from "./jobTracking.js";
 
 const parser = new Parser();
 
@@ -92,9 +93,13 @@ export async function postItem(feed: RssFeed, item: Parser.Item, defaultTemplate
   await channel.send({ content });
 }
 
+export function runOnce(): Promise<void> {
+  return runTracked("rssPoller", pollRssFeeds);
+}
+
 export function startRssPollerJob(intervalMs: number): NodeJS.Timeout {
-  pollRssFeeds().catch((err) => console.error("RSS poller job failed", err));
+  runOnce().catch((err) => console.error("RSS poller job failed", err));
   return setInterval(() => {
-    pollRssFeeds().catch((err) => console.error("RSS poller job failed", err));
+    runOnce().catch((err) => console.error("RSS poller job failed", err));
   }, intervalMs);
 }
