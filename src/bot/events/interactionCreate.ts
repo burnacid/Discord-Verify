@@ -10,7 +10,7 @@ import {
   TextInputStyle,
 } from "discord.js";
 import { client } from "../client.js";
-import { decideReviewEntry, unverifyMember, verifyMember } from "../adminActions.js";
+import { decideReviewEntry, sendVerificationLink, unverifyMember, verifyMember } from "../adminActions.js";
 import { getVerifyStatusMessage } from "../verificationService.js";
 import { listPendingReviewEntries } from "../reviewQueue.js";
 import type { ReviewDecisionResult } from "../adminActions.js";
@@ -26,6 +26,10 @@ client.on("interactionCreate", async (interaction: Interaction) => {
   }
   if (interaction.isChatInputCommand() && interaction.commandName === "unverify-user") {
     await handleUnverifyUserCommand(interaction);
+    return;
+  }
+  if (interaction.isChatInputCommand() && interaction.commandName === "send-verify-link") {
+    await handleSendVerifyLinkCommand(interaction);
     return;
   }
   if (interaction.isChatInputCommand() && interaction.commandName === "review-queue") {
@@ -105,6 +109,27 @@ async function handleUnverifyUserCommand(interaction: ChatInputCommandInteractio
   }
 
   await interaction.editReply(`<@${target.id}> has been unverified.`);
+}
+
+async function handleSendVerifyLinkCommand(interaction: ChatInputCommandInteraction): Promise<void> {
+  if (!interaction.guildId) {
+    await interaction.reply({
+      content: "Use this command inside the server.",
+      flags: MessageFlags.Ephemeral,
+    });
+    return;
+  }
+
+  const target = interaction.options.getUser("user", true);
+  await interaction.deferReply({ flags: MessageFlags.Ephemeral });
+
+  const result = await sendVerificationLink(target.id, interaction.guildId, interaction.user.id, "/send-verify-link");
+  if (!result.ok) {
+    await interaction.editReply(result.reason);
+    return;
+  }
+
+  await interaction.editReply(`Verification link sent to <@${target.id}>.`);
 }
 
 const REVIEW_QUEUE_LIST_LIMIT = 15;

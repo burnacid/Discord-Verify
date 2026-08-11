@@ -1,7 +1,7 @@
 import { Router } from "express";
 import type { MemberStatus } from "@prisma/client";
 import { prisma } from "../../db.js";
-import { verifyMember, unverifyMember } from "../../bot/adminActions.js";
+import { verifyMember, unverifyMember, sendVerificationLink } from "../../bot/adminActions.js";
 import { fetchGuildMember, searchGuildMembers } from "../../bot/memberLookup.js";
 import { asyncHandler } from "../asyncHandler.js";
 import { requireAdmin } from "./session.js";
@@ -28,18 +28,26 @@ membersRouter.get(
     const query = typeof req.query.q === "string" ? req.query.q.trim() : "";
     const flash = typeof req.query.flash === "string" ? req.query.flash : undefined;
     const flashKind = parseFlashKind(req.query.flashKind);
-    const statusFilter = isValidStatus(req.query.status) ? req.query.status : null;
+    const rawStatus = typeof req.query.status === "string" ? req.query.status : null;
+    const statusFilter: MemberStatus | "link_pending" | null =
+      rawStatus === "link_pending" ? "link_pending" : isValidStatus(rawStatus) ? rawStatus : null;
     const page = Math.max(1, Number(req.query.page) || 1);
 
     let results: MemberRow[] = [];
     let totalPages = 1;
-    if (statusFilter) {
+    if (statusFilter === "link_pending") {
+      const { rows, total } = await lookupByLinkPending(guildId, page);
+      results = rows;
+      totalPages = Math.max(1, Math.ceil(total / STATUS_LIST_PAGE_SIZE));
+    } else if (statusFilter) {
       const { rows, total } = await lookupByStatus(guildId, statusFilter, page);
       results = rows;
       totalPages = Math.max(1, Math.ceil(total / STATUS_LIST_PAGE_SIZE));
     } else if (query) {
       results = SNOWFLAKE_RE.test(query) ? await lookupById(guildId, query) : await lookupByUsername(guildId, query);
     }
+
+    results = await attachLinkStatus(guildId, results);
 
     res.send(
       membersPage(
@@ -75,6 +83,75 @@ membersRouter.post(
     res.redirect(`/admin/members?q=${encodeURIComponent(discordId)}&${flashQuery(flash, result.ok ? undefined : "error")}`);
   }),
 );
+
+membersRouter.post(
+  "/admin/members/:discordId/send-verify-link",
+  asyncHandler(async (req, res) => {
+    const { discordId } = req.params;
+    const result = await sendVerificationLink(discordId, req.session.guildId!, req.session.discordId!, "admin panel");
+    const flash = result.ok ? "Verification link sent." : result.reason;
+    res.redirect(`/admin/members?q=${encodeURIComponent(discordId)}&${flashQuery(flash, result.ok ? undefined : "error")}`);
+  }),
+);
+
+// Not a real MemberStatus — synthesizes a "sent a link but never opened it"
+// view from VerificationToken rows (usedAt is only set once /verify/:token
+// is actually visited), scoped to members still unverified.
+async function lookupByLinkPending(guildId: string, page: number): Promise<{ rows: MemberRow[]; total: number }> {
+  const grouped = await prisma.verificationToken.groupBy({
+    by: ["discordId"],
+    where: { guildId, usedAt: null, member: { status: "unverified" } },
+    _max: { createdAt: true },
+  });
+
+  const total = grouped.length;
+  const sorted = grouped
+    .sort((a, b) => (b._max.createdAt?.getTime() ?? 0) - (a._max.createdAt?.getTime() ?? 0))
+    .slice((page - 1) * STATUS_LIST_PAGE_SIZE, page * STATUS_LIST_PAGE_SIZE);
+
+  const rows = await Promise.all(
+    sorted.map(async ({ discordId }) => {
+      const [guildMember, dbMember] = await Promise.all([
+        fetchGuildMember(discordId, guildId),
+        prisma.member.findUnique({ where: { discordId_guildId: { discordId, guildId } } }),
+      ]);
+      return {
+        discordId,
+        username: guildMember?.user.username ?? null,
+        status: dbMember?.status ?? "unverified",
+        country: dbMember?.country ?? null,
+        lastIp: dbMember?.lastIp ?? null,
+        verifiedAt: dbMember?.verifiedAt ?? null,
+      };
+    }),
+  );
+
+  return { rows, total };
+}
+
+// Merges in the latest unused verification token (if any) for each row, so
+// the "Link" column reads meaningfully across every view — search, status
+// filters, and the link_pending filter alike — without duplicating the
+// token lookup in every branch above.
+async function attachLinkStatus(guildId: string, rows: MemberRow[]): Promise<MemberRow[]> {
+  if (rows.length === 0) return rows;
+
+  const tokens = await prisma.verificationToken.findMany({
+    where: { guildId, usedAt: null, discordId: { in: rows.map((r) => r.discordId) } },
+    orderBy: { createdAt: "desc" },
+    distinct: ["discordId"],
+  });
+  const byId = new Map(tokens.map((t) => [t.discordId, t]));
+
+  return rows.map((row) => {
+    const token = byId.get(row.discordId);
+    return {
+      ...row,
+      linkSentAt: token?.createdAt ?? null,
+      linkExpired: token ? token.expiresAt < new Date() : null,
+    };
+  });
+}
 
 async function lookupById(guildId: string, discordId: string): Promise<MemberRow[]> {
   const [guildMember, dbMember] = await Promise.all([

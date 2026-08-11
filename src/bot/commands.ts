@@ -18,6 +18,13 @@ export const commands = [
       opt.setName("user").setDescription("The member to unverify").setRequired(true),
     ),
   new SlashCommandBuilder()
+    .setName("send-verify-link")
+    .setDescription("DM a member a fresh verification link")
+    .setDefaultMemberPermissions(PermissionFlagsBits.ManageRoles)
+    .addUserOption((opt) =>
+      opt.setName("user").setDescription("The member to send a verification link to").setRequired(true),
+    ),
+  new SlashCommandBuilder()
     .setName("review-queue")
     .setDescription("List members pending manual verification review")
     .setDefaultMemberPermissions(PermissionFlagsBits.ManageRoles),

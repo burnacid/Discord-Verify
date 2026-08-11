@@ -33,6 +33,14 @@ export interface PendingReviewRow {
   createdAt: Date;
 }
 
+export interface PendingVerificationRow {
+  discordId: string;
+  username: string | null;
+  sentAt: Date;
+  expiresAt: Date;
+  expired: boolean;
+}
+
 function escapeHtml(value: string): string {
   return value
     .replace(/&/g, "&amp;")
@@ -63,6 +71,20 @@ function reviewRow(row: PendingReviewRow): string {
   </tr>`;
 }
 
+function pendingVerificationRow(row: PendingVerificationRow): string {
+  return `<tr>
+    <td>${escapeHtml(row.discordId)}</td>
+    <td>${row.username ? escapeHtml(row.username) : "<span class=\"hint\">not in server</span>"}</td>
+    <td>${row.sentAt.toISOString().slice(0, 16).replace("T", " ")}</td>
+    <td>${row.expired ? `<span class="badge badge-rejected">expired</span>` : `<span class="badge badge-pending_review">pending</span>`}</td>
+    <td class="actions">
+      <form class="inline" method="post" action="/admin/pending-verifications/${row.discordId}/resend">
+        <button type="submit" class="btn-secondary">Resend link</button>
+      </form>
+    </td>
+  </tr>`;
+}
+
 function systemStatusRows(system: SystemStatus): string {
   const rows: string[] = [];
   if (system.geoStale) {
@@ -87,6 +109,7 @@ export function dashboardPage(
   user: AdminUser,
   stats: DashboardStats,
   pending: PendingReviewRow[],
+  pendingVerifications: PendingVerificationRow[],
   settings: RuntimeSettings,
   system: SystemStatus,
   channels: GuildTextChannel[],
@@ -116,6 +139,18 @@ export function dashboardPage(
             </tr>
           </thead>
           <tbody>${pending.map(reviewRow).join("")}</tbody>
+        </table></div>`
+    }
+
+    <h2>Sent but not verified (${pendingVerifications.length}) &nbsp;<a class="hint" href="/admin/members?status=link_pending">View in Members →</a></h2>
+    ${
+      pendingVerifications.length === 0
+        ? `<div class="card empty">Nobody's waiting on a verification link.</div>`
+        : `<div class="table-wrap"><table>
+          <thead>
+            <tr><th>Discord ID</th><th>Username</th><th>Link sent</th><th>Status</th><th></th></tr>
+          </thead>
+          <tbody>${pendingVerifications.map(pendingVerificationRow).join("")}</tbody>
         </table></div>`
     }
 

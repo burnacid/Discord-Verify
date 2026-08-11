@@ -1,12 +1,14 @@
 import { EmbedBuilder } from "discord.js";
 import { prisma } from "../db.js";
 import { client } from "./client.js";
+import { config } from "../config.js";
 import { getRuntimeSettings } from "../runtimeSettings.js";
 import { postAuditLog } from "./auditLog.js";
 import {
   assignVerifiedRole,
   ensureMember,
   isAdminMember,
+  issueVerificationToken,
   kickMember,
   removeVerifiedRole,
   sendDirectMessage,
@@ -72,6 +74,38 @@ export async function unverifyMember(
   });
 
   await postAuditLog(guildId, `<@${discordId}> was manually **unverified** by <@${decidedById}> via ${via}.`);
+
+  return { ok: true };
+}
+
+/**
+ * Shared logic behind /send-verify-link and the admin web panel's "Send link"
+ * action: issues a fresh token and DMs the member their verification link,
+ * regardless of their current status.
+ */
+export async function sendVerificationLink(
+  discordId: string,
+  guildId: string,
+  requestedById: string,
+  via: string,
+): Promise<ActionResult> {
+  const member = await ensureMember(discordId, guildId);
+  if (member.status === "verified") {
+    return { ok: false, reason: "This member is already verified." };
+  }
+
+  const token = await issueVerificationToken(discordId, guildId);
+  const link = `${config.web.publicBaseUrl}/verify/${token}`;
+  const sent = await sendDirectMessage(
+    discordId,
+    `An admin requested that you verify your membership. Please open the link below within 24 hours:\n${link}`,
+  );
+
+  if (!sent) {
+    return { ok: false, reason: "Couldn't DM this member — they may have DMs disabled." };
+  }
+
+  await postAuditLog(guildId, `A verification link was sent to <@${discordId}> by <@${requestedById}> via ${via}.`);
 
   return { ok: true };
 }

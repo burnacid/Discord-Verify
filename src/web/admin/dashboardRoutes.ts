@@ -2,14 +2,15 @@ import { Router } from "express";
 import { prisma } from "../../db.js";
 import { client } from "../../bot/client.js";
 import { fetchGuildRoles, fetchGuildTextChannels } from "../../bot/channelLookup.js";
+import { fetchGuildMember } from "../../bot/memberLookup.js";
 import { getRuntimeSettings, updateRuntimeSettings } from "../../runtimeSettings.js";
-import { decideReviewEntry } from "../../bot/adminActions.js";
+import { decideReviewEntry, sendVerificationLink } from "../../bot/adminActions.js";
 import { requestRestart } from "../../lifecycle.js";
 import { getGeoStoreStatus } from "../../geo/store.js";
 import { asyncHandler } from "../asyncHandler.js";
 import { requireAdmin } from "./session.js";
 import { dashboardPage } from "../views/admin/dashboard.js";
-import type { PendingReviewRow, SystemStatus } from "../views/admin/dashboard.js";
+import type { PendingReviewRow, PendingVerificationRow, SystemStatus } from "../views/admin/dashboard.js";
 import { renderAdminPage } from "../views/admin/layout.js";
 import { errorPage } from "../views/verifyPages.js";
 import { flashQuery, parseFlashKind } from "./flashQuery.js";
@@ -17,6 +18,8 @@ import { flashQuery, parseFlashKind } from "./flashQuery.js";
 // Comfortably more than the 12h GeoIP refresh interval, so one missed cycle
 // doesn't immediately flag the dashboard as unhealthy.
 const GEO_STALE_AFTER_MS = 36 * 60 * 60 * 1000;
+
+const PENDING_VERIFICATIONS_LIMIT = 25;
 
 export const dashboardRouter = Router();
 
@@ -27,8 +30,19 @@ dashboardRouter.get(
   "/admin",
   asyncHandler(async (req, res) => {
     const guildId = req.session.guildId!;
-    const [verified, pendingReview, rejected, unverified, pendingEntries, guild, erroringFeeds, erroringSources, channels, roles] =
-      await Promise.all([
+    const [
+      verified,
+      pendingReview,
+      rejected,
+      unverified,
+      pendingEntries,
+      pendingVerificationTokens,
+      guild,
+      erroringFeeds,
+      erroringSources,
+      channels,
+      roles,
+    ] = await Promise.all([
         prisma.member.count({ where: { guildId, status: "verified" } }),
         prisma.member.count({ where: { guildId, status: "pending_review" } }),
         prisma.member.count({ where: { guildId, status: "rejected" } }),
@@ -38,12 +52,34 @@ dashboardRouter.get(
           include: { member: true },
           orderBy: { createdAt: "asc" },
         }),
+        // Latest unused token per member who was sent a link but never opened
+        // it (or opened it but let it expire) — usedAt is only ever set once
+        // the /verify/:token route is actually visited (src/web/routes/verify.ts).
+        prisma.verificationToken.findMany({
+          where: { guildId, usedAt: null, member: { status: "unverified" } },
+          orderBy: { createdAt: "desc" },
+          distinct: ["discordId"],
+          take: PENDING_VERIFICATIONS_LIMIT,
+        }),
         client.guilds.fetch(guildId),
         prisma.rssFeed.count({ where: { guildId, enabled: true, lastError: { not: null } } }),
         prisma.eventSource.count({ where: { guildId, enabled: true, lastError: { not: null } } }),
         fetchGuildTextChannels(guildId),
         fetchGuildRoles(guildId),
       ]);
+
+    const pendingVerifications: PendingVerificationRow[] = await Promise.all(
+      pendingVerificationTokens.map(async (token) => {
+        const guildMember = await fetchGuildMember(token.discordId, guildId);
+        return {
+          discordId: token.discordId,
+          username: guildMember?.user.username ?? null,
+          sentAt: token.createdAt,
+          expiresAt: token.expiresAt,
+          expired: token.expiresAt < new Date(),
+        };
+      }),
+    );
 
     const pending: PendingReviewRow[] = pendingEntries.map((entry) => ({
       id: entry.id,
@@ -72,6 +108,7 @@ dashboardRouter.get(
         { discordId: req.session.discordId!, username: req.session.username ?? "Admin" },
         { verified, pendingReview, rejected, unverified, verifiedPercent },
         pending,
+        pendingVerifications,
         getRuntimeSettings(guildId),
         system,
         channels,
@@ -118,6 +155,20 @@ dashboardRouter.post(
         : result.reason === "already_resolved"
           ? `Already resolved as ${result.entryStatus}.`
           : "Couldn't remove the member from the server. Check the bot's permissions/role position.";
+    res.redirect(`/admin?${flashQuery(flash, result.ok ? undefined : "error")}`);
+  }),
+);
+
+dashboardRouter.post(
+  "/admin/pending-verifications/:discordId/resend",
+  asyncHandler(async (req, res) => {
+    const result = await sendVerificationLink(
+      req.params.discordId,
+      req.session.guildId!,
+      req.session.discordId!,
+      "admin panel (dashboard)",
+    );
+    const flash = result.ok ? "Verification link sent." : result.reason;
     res.redirect(`/admin?${flashQuery(flash, result.ok ? undefined : "error")}`);
   }),
 );
