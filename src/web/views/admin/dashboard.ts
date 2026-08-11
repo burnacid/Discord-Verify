@@ -142,7 +142,7 @@ export function dashboardPage(
         </table></div>`
     }
 
-    <h2>Sent but not verified (${pendingVerifications.length})</h2>
+    <h2>Sent but not verified (${pendingVerifications.length}) &nbsp;<a class="hint" href="/admin/members?status=link_pending">View in Members →</a></h2>
     ${
       pendingVerifications.length === 0
         ? `<div class="card empty">Nobody's waiting on a verification link.</div>`

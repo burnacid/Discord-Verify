@@ -9,6 +9,10 @@ export interface MemberRow {
   country: string | null;
   lastIp: string | null;
   verifiedAt: Date | null;
+  // Latest unused verification token, if any — set by attachLinkStatus() in
+  // membersRoutes.ts, not by the base per-status/search lookups.
+  linkSentAt?: Date | null;
+  linkExpired?: boolean | null;
 }
 
 function escapeHtml(value: string): string {
@@ -17,6 +21,15 @@ function escapeHtml(value: string): string {
     .replace(/</g, "&lt;")
     .replace(/>/g, "&gt;")
     .replace(/"/g, "&quot;");
+}
+
+function linkStatusCell(row: MemberRow): string {
+  if (!row.linkSentAt) return "—";
+  const sentAt = row.linkSentAt.toISOString().slice(0, 16).replace("T", " ");
+  const badge = row.linkExpired
+    ? `<span class="badge badge-rejected">expired</span>`
+    : `<span class="badge badge-pending_review">pending</span>`;
+  return `${badge}<div class="hint">sent ${sentAt}</div>`;
 }
 
 function memberRow(row: MemberRow): string {
@@ -28,6 +41,7 @@ function memberRow(row: MemberRow): string {
     <td>${row.country ?? "—"}</td>
     <td>${row.lastIp ?? "—"}</td>
     <td>${row.verifiedAt ? row.verifiedAt.toISOString().slice(0, 16).replace("T", " ") : "—"}</td>
+    <td>${linkStatusCell(row)}</td>
     <td class="actions">
       ${
         isVerified
@@ -36,11 +50,11 @@ function memberRow(row: MemberRow): string {
             </form>`
           : `<form class="inline" method="post" action="/admin/members/${row.discordId}/verify">
               <button type="submit" class="btn-approve">Verify</button>
+            </form>
+            <form class="inline" method="post" action="/admin/members/${row.discordId}/send-verify-link">
+              <button type="submit" class="btn-secondary" onclick="return confirm('Send a verification link to this member?')">Send link</button>
             </form>`
       }
-      <form class="inline" method="post" action="/admin/members/${row.discordId}/send-verify-link">
-        <button type="submit" class="btn-secondary" onclick="return confirm('Send a verification link to this member?')">Send link</button>
-      </form>
     </td>
   </tr>`;
 }
@@ -56,7 +70,16 @@ export function membersPage(
   flashKind?: FlashKind,
 ): string {
   const showResults = statusFilter !== null || query !== "";
-  const emptyMessage = statusFilter ? `No members with status "${statusFilter}".` : "No matching members found.";
+  const emptyMessage =
+    statusFilter === "link_pending"
+      ? "Nobody's waiting on a verification link."
+      : statusFilter
+        ? `No members with status "${statusFilter}".`
+        : "No matching members found.";
+  const statusFilterBadge =
+    statusFilter === "link_pending"
+      ? `<span class="badge badge-pending_review">link pending</span>`
+      : `<span class="badge badge-${statusFilter}">${statusFilter}</span>`;
 
   const pager =
     statusFilter && totalPages > 1
@@ -94,7 +117,7 @@ export function membersPage(
 
     ${
       statusFilter
-        ? `<p class="hint" style="margin-bottom:12px;">Filtering by status: <span class="badge badge-${statusFilter}">${statusFilter}</span> &nbsp;<a href="/admin/members">Clear filter</a></p>`
+        ? `<p class="hint" style="margin-bottom:12px;">Filtering by status: ${statusFilterBadge} &nbsp;<a href="/admin/members">Clear filter</a></p>`
         : ""
     }
 
@@ -106,7 +129,7 @@ export function membersPage(
           : `<div class="table-wrap">
             <table>
               <thead>
-                <tr><th>Discord ID</th><th>Username</th><th>Status</th><th>Country</th><th>Last IP</th><th>Verified at</th><th></th></tr>
+                <tr><th>Discord ID</th><th>Username</th><th>Status</th><th>Country</th><th>Last IP</th><th>Verified at</th><th>Link</th><th></th></tr>
               </thead>
               <tbody>${results.map(memberRow).join("")}</tbody>
             </table>

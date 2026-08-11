@@ -89,7 +89,10 @@ export async function sendVerificationLink(
   requestedById: string,
   via: string,
 ): Promise<ActionResult> {
-  await ensureMember(discordId, guildId);
+  const member = await ensureMember(discordId, guildId);
+  if (member.status === "verified") {
+    return { ok: false, reason: "This member is already verified." };
+  }
 
   const token = await issueVerificationToken(discordId, guildId);
   const link = `${config.web.publicBaseUrl}/verify/${token}`;
