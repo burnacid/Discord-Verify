@@ -87,7 +87,11 @@
           // every guild, so the guild is read from the URL rather than
           // hardcoded.
           const guildId = window.location.pathname.split("/")[2];
-          const res = await fetch(`/join/${guildId}/invite`);
+          // Forwards ?ref=<source> from the join link (e.g. /join/123?ref=twitter)
+          // so the server can log where this visit came from.
+          const ref = new URLSearchParams(window.location.search).get("ref");
+          const inviteUrl = `/join/${guildId}/invite` + (ref ? `?ref=${encodeURIComponent(ref)}` : "");
+          const res = await fetch(inviteUrl);
           if (!res.ok) throw new Error("bad response");
           const { url } = await res.json();
           window.location.replace(url);

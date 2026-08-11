@@ -10,6 +10,11 @@ import { notFoundPage } from "../views/verifyPages.js";
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const joinPagePath = path.join(__dirname, "..", "public", "join.html");
 
+// Keeps ref values to a sane, log-friendly shape (e.g. "twitter",
+// "flyer-2024", "partner_x") — rejects anything free-form enough to bloat
+// the InviteReferral table or contain junk from a malformed/malicious link.
+const REF_RE = /^[a-zA-Z0-9_.-]{1,64}$/;
+
 export const joinRouter = Router();
 
 joinRouter.get("/", (_req, res) => {
@@ -39,6 +44,16 @@ joinRouter.get("/join/:guildId", (_req, res) => {
 joinRouter.get("/join/:guildId/invite", joinInviteLimiter, async (req, res) => {
   try {
     const url = await getOrCreateJoinInvite(req.params.guildId);
+
+    const ref = typeof req.query.ref === "string" ? req.query.ref.trim() : "";
+    if (REF_RE.test(ref)) {
+      // Fire-and-forget: analytics logging must never hold up or fail the
+      // actual invite response.
+      prisma.inviteReferral
+        .create({ data: { guildId: req.params.guildId, ref } })
+        .catch((err) => console.error("Failed to log invite referral", err));
+    }
+
     res.json({ url });
   } catch (err) {
     console.error("Failed to create join invite", err);

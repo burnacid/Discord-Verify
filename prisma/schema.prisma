@@ -89,6 +89,21 @@ model InviteLink {
   @@index([guildId, expiresAt])
 }
 
+// One row per /join page visit that carried a ?ref= query param — lets
+// admins see which campaigns/sources are driving people to the join page.
+// Not tied to a specific InviteLink row: invites are cached/shared across
+// visitors (see getOrCreateJoinInvite in src/bot/inviteManager.ts), so a
+// single invite code says nothing about how any one visitor got there.
+model InviteReferral {
+  id        String   @id @default(uuid())
+  guildId   String
+  ref       String
+  createdAt DateTime @default(now())
+
+  @@index([guildId, ref])
+  @@index([guildId, createdAt])
+}
+
 // One row per guild holding runtime-editable settings that used to be
 // env-only and/or a single global row. Seeded with defaults when a guild is
 // first added (see guildCreate.ts); edited live from the admin panel
