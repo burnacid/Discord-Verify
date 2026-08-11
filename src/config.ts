@@ -30,6 +30,13 @@ export const config = {
     port: Number(process.env.PORT ?? 3000),
     publicBaseUrl: required("PUBLIC_BASE_URL"),
     sessionSecret: required("SESSION_SECRET"),
+    // Optional. Lets a bare /join (no guildId) resolve for multi-guild
+    // deployments — without it, /join only auto-resolves when the bot
+    // serves exactly one guild (see joinRouter in src/web/routes/join.ts).
+    // Not the same as the old global DISCORD_GUILD_ID this bot dropped when
+    // it went multi-guild: this only picks which guild a *convenience* link
+    // points to, it doesn't back any per-guild behavior.
+    defaultGuildId: process.env.DEFAULT_GUILD_ID || null,
   },
   // Seed/default values for the DB-backed Settings row (see src/runtimeSettings.ts).
   // Only used the very first time the app boots against a fresh database —
