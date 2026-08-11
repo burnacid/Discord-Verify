@@ -1,7 +1,7 @@
 import { Router } from "express";
 import type { MemberStatus } from "@prisma/client";
 import { prisma } from "../../db.js";
-import { verifyMember, unverifyMember } from "../../bot/adminActions.js";
+import { verifyMember, unverifyMember, sendVerificationLink } from "../../bot/adminActions.js";
 import { fetchGuildMember, searchGuildMembers } from "../../bot/memberLookup.js";
 import { asyncHandler } from "../asyncHandler.js";
 import { requireAdmin } from "./session.js";
@@ -72,6 +72,16 @@ membersRouter.post(
     const { discordId } = req.params;
     const result = await unverifyMember(discordId, req.session.guildId!, req.session.discordId!, "admin panel");
     const flash = result.ok ? "Member unverified." : result.reason;
+    res.redirect(`/admin/members?q=${encodeURIComponent(discordId)}&${flashQuery(flash, result.ok ? undefined : "error")}`);
+  }),
+);
+
+membersRouter.post(
+  "/admin/members/:discordId/send-verify-link",
+  asyncHandler(async (req, res) => {
+    const { discordId } = req.params;
+    const result = await sendVerificationLink(discordId, req.session.guildId!, req.session.discordId!, "admin panel");
+    const flash = result.ok ? "Verification link sent." : result.reason;
     res.redirect(`/admin/members?q=${encodeURIComponent(discordId)}&${flashQuery(flash, result.ok ? undefined : "error")}`);
   }),
 );

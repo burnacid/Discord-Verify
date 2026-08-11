@@ -38,6 +38,9 @@ function memberRow(row: MemberRow): string {
               <button type="submit" class="btn-approve">Verify</button>
             </form>`
       }
+      <form class="inline" method="post" action="/admin/members/${row.discordId}/send-verify-link">
+        <button type="submit" class="btn-secondary" onclick="return confirm('Send a verification link to this member?')">Send link</button>
+      </form>
     </td>
   </tr>`;
 }
