@@ -17,6 +17,7 @@ interface NormalizedItem {
   startUtc: Date;
   endUtc: Date | null; // null = fall back to source.durationMinutes
   updatedAt: Date | null;
+  categorySlugs: string[]; // only populated by providers that expose categories (tribe); empty otherwise
 }
 
 // Converts a naive "YYYY-MM-DD HH:mm:ss" wall-clock string, interpreted as
@@ -116,6 +117,7 @@ async function fetchCustomItems(source: EventSource): Promise<NormalizedItem[]> 
     startUtc: zonedTimeToUtc(item.date, source.timezone),
     endUtc: null,
     updatedAt: item.updated_at ? new Date(item.updated_at) : null,
+    categorySlugs: [],
   }));
 }
 
@@ -128,6 +130,10 @@ interface TribeVenue {
   city?: string;
 }
 
+interface TribeCategory {
+  slug?: string;
+}
+
 interface TribeEventItem {
   id: number | string;
   title: string;
@@ -137,6 +143,14 @@ interface TribeEventItem {
   utc_end_date?: string;
   modified_utc?: string;
   venue?: TribeVenue | TribeVenue[] | null;
+  categories?: TribeCategory[];
+}
+
+function tribeCategorySlugs(categories: TribeEventItem["categories"]): string[] {
+  if (!Array.isArray(categories)) return [];
+  return categories
+    .map((c) => (typeof c?.slug === "string" ? c.slug.toLowerCase() : null))
+    .filter((slug): slug is string => slug !== null);
 }
 
 function isTribeEventItem(value: unknown): value is TribeEventItem {
@@ -175,6 +189,13 @@ async function fetchTribeItems(source: EventSource): Promise<NormalizedItem[]> {
     // both an efficiency win and the actual "next N days" behavior requested.
     url.searchParams.set("start_date", formatDateOnly(now));
     url.searchParams.set("end_date", formatDateOnly(windowEnd));
+    // Include-mode category filtering can be pushed down to the API itself
+    // (fewer events transferred/paged through); exclude-mode can't — the
+    // Tribe API only supports "events in these categories", not the
+    // inverse — so that's re-checked client-side in syncEventSource.
+    if (source.categoryFilter && source.categoryFilterMode === "include") {
+      url.searchParams.set("categories", source.categoryFilter);
+    }
 
     const res = await fetch(url.toString());
     if (!res.ok) throw new Error(`Tribe API request failed: ${res.status} ${res.statusText}`);
@@ -194,6 +215,7 @@ async function fetchTribeItems(source: EventSource): Promise<NormalizedItem[]> {
         startUtc: parseUtcDateString(raw.utc_start_date),
         endUtc: raw.utc_end_date ? parseUtcDateString(raw.utc_end_date) : null,
         updatedAt: raw.modified_utc ? parseUtcDateString(raw.modified_utc) : null,
+        categorySlugs: tribeCategorySlugs(raw.categories),
       });
     }
 
@@ -226,6 +248,22 @@ function matchesNameFilter(name: string, nameFilter: string | null, nameFilterMo
   const matchesAny = keywords.some((k) => lowerName.includes(k));
   // "exclude" mode: keep everything EXCEPT items matching a keyword.
   return nameFilterMode === "exclude" ? !matchesAny : matchesAny;
+}
+
+function matchesCategoryFilter(
+  categorySlugs: string[],
+  categoryFilter: string | null,
+  categoryFilterMode: string,
+): boolean {
+  if (!categoryFilter) return true;
+  const slugs = categoryFilter
+    .split(",")
+    .map((s) => s.trim().toLowerCase())
+    .filter(Boolean);
+  if (slugs.length === 0) return true;
+  const matchesAny = categorySlugs.some((s) => slugs.includes(s));
+  // "exclude" mode: keep everything EXCEPT items in one of these categories.
+  return categoryFilterMode === "exclude" ? !matchesAny : matchesAny;
 }
 
 function buildDescription(item: NormalizedItem): string {
@@ -363,7 +401,11 @@ export async function deleteAllEventsForSource(source: EventSource): Promise<voi
 
 export async function syncEventSource(source: EventSource): Promise<void> {
   const allItems = await fetchNormalizedItems(source);
-  const items = allItems.filter((item) => matchesNameFilter(item.name, source.nameFilter, source.nameFilterMode));
+  const items = allItems.filter(
+    (item) =>
+      matchesNameFilter(item.name, source.nameFilter, source.nameFilterMode) &&
+      matchesCategoryFilter(item.categorySlugs, source.categoryFilter, source.categoryFilterMode),
+  );
   const itemsById = new Map(items.map((item) => [item.externalId, item]));
 
   const guild = await client.guilds.fetch(source.guildId);

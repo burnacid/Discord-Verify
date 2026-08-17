@@ -95,7 +95,29 @@ export async function renderWelcomeTemplate(template: string, member: GuildMembe
   return rendered.length > 2000 ? rendered.slice(0, 1997) + "…" : rendered;
 }
 
+// Discord's gateway can redeliver a guildMemberAdd dispatch for the same
+// join (e.g. around a session resume) even though this handler is only
+// ever registered once. Dedupe on (guild, member) for a short window so a
+// redelivered event doesn't post the welcome message twice.
+const recentWelcomes = new Map<string, number>();
+const DEDUPE_WINDOW_MS = 60_000;
+
+function isDuplicateJoin(member: GuildMember): boolean {
+  const key = `${member.guild.id}:${member.id}`;
+  const now = Date.now();
+
+  for (const [k, sentAt] of recentWelcomes) {
+    if (now - sentAt > DEDUPE_WINDOW_MS) recentWelcomes.delete(k);
+  }
+
+  if (recentWelcomes.has(key)) return true;
+  recentWelcomes.set(key, now);
+  return false;
+}
+
 export async function sendWelcomeMessage(member: GuildMember): Promise<void> {
+  if (isDuplicateJoin(member)) return;
+
   const settings = await getWelcomeSettings(member.guild.id);
   if (!settings.enabled || !settings.channelId) return;
 

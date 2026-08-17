@@ -80,9 +80,12 @@ async function main() {
     clearInterval(eventSyncInterval);
     clearInterval(geoUpdaterInterval);
     clearInterval(roleSyncInterval);
+    // Log out of the Discord gateway first so a lingering process can't
+    // keep reacting to events (e.g. guildMemberAdd) while the rest of
+    // shutdown (HTTP server drain, DB disconnect) is still in flight.
+    await client.destroy();
     await closeServer(server);
     await prisma.$disconnect();
-    await client.destroy();
 
     console.log("Shutdown complete.");
     process.exit(0);

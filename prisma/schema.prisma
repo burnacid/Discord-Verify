@@ -111,15 +111,15 @@ model InviteReferral {
 // auditLogChannelId used to be DISCORD_*_ID env vars — impossible to keep
 // as env vars once there's more than one guild, so they live here now.
 model Settings {
-  guildId          String   @id
-  allowedCountries String
-  maxFraudScore    Int
-  sendJoinDm       Boolean
-  verifiedRoleId      String?
-  startHereChannelId  String?
-  modReviewChannelId  String?
-  auditLogChannelId   String?
-  updatedAt        DateTime @updatedAt
+  guildId            String   @id
+  allowedCountries   String
+  maxFraudScore      Int
+  sendJoinDm         Boolean
+  verifiedRoleId     String?
+  startHereChannelId String?
+  modReviewChannelId String?
+  auditLogChannelId  String?
+  updatedAt          DateTime @updatedAt
 }
 
 // One row per background job (keyed by the same string each job registers
@@ -127,32 +127,32 @@ model Settings {
 // the admin "Scheduled Tasks" page — updated by runTracked() (src/jobs/
 // jobTracking.ts) on every scheduled tick and every manual "Run now".
 model JobRun {
-  key           String    @id
-  lastRunAt     DateTime?
-  lastSuccessAt DateTime?
-  lastError     String?   @db.Text
+  key            String    @id
+  lastRunAt      DateTime?
+  lastSuccessAt  DateTime?
+  lastError      String?   @db.Text
   lastDurationMs Int?
 }
 
 model RssFeed {
-  id           String    @id @default(uuid())
-  guildId      String
-  name         String
-  feedUrl      String
-  channelId    String
-  enabled      Boolean   @default(true)
-  template     String?   @db.Text
-  lastGuid     String?
-  lastPostedAt DateTime?
+  id            String    @id @default(uuid())
+  guildId       String
+  name          String
+  feedUrl       String
+  channelId     String
+  enabled       Boolean   @default(true)
+  template      String?   @db.Text
+  lastGuid      String?
+  lastPostedAt  DateTime?
   // Set on every poll attempt (success or failure) — unlike lastPostedAt,
   // which only advances when a new item is actually found/posted, so a
   // quiet-but-healthy feed and a broken one used to look identical.
   lastCheckedAt DateTime?
   // Human-readable reason for the most recent poll failure; cleared on the
   // next successful poll. Null = last poll (if any) succeeded.
-  lastError    String?   @db.Text
-  createdAt    DateTime  @default(now())
-  updatedAt    DateTime  @updatedAt
+  lastError     String?   @db.Text
+  createdAt     DateTime  @default(now())
+  updatedAt     DateTime  @updatedAt
 
   @@index([guildId])
 }
@@ -211,27 +211,29 @@ model VerifyPromptSettings {
 }
 
 model EventSource {
-  id              String    @id @default(uuid())
-  guildId         String
-  name            String
-  provider        String    @default("custom") // "custom" | "tribe" (WordPress The Events Calendar)
-  apiUrl          String
-  timezone        String    @default("Europe/Amsterdam")
-  durationMinutes Int       @default(240)
-  lookaheadDays   Int       @default(7) // "tribe" provider only: only fetch/create events within this many days
-  nameFilter      String?   @db.Text // comma-separated keywords; blank/null = no filter
-  nameFilterMode  String    @default("include") // "include" = only sync matches; "exclude" = sync everything except matches
-  messageChannelId String? // null = don't post per-event messages; not every API needs this
-  messageTemplate String   @db.Text @default("{{description}}") // embed description body; title/fields are structured separately
-  mentionRoleId   String? // role to @-mention when a new event message is first posted (null = no mention)
-  enabled         Boolean   @default(true)
+  id                 String    @id @default(uuid())
+  guildId            String
+  name               String
+  provider           String    @default("custom") // "custom" | "tribe" (WordPress The Events Calendar)
+  apiUrl             String
+  timezone           String    @default("Europe/Amsterdam")
+  durationMinutes    Int       @default(240)
+  lookaheadDays      Int       @default(7) // "tribe" provider only: only fetch/create events within this many days
+  nameFilter         String?   @db.Text // comma-separated keywords; blank/null = no filter
+  nameFilterMode     String    @default("include") // "include" = only sync matches; "exclude" = sync everything except matches
+  categoryFilter     String?   @db.Text // "tribe" provider only: comma-separated category slugs; blank/null = no filter
+  categoryFilterMode String    @default("include") // "include" = only sync matching categories; "exclude" = sync everything except matches
+  messageChannelId   String? // null = don't post per-event messages; not every API needs this
+  messageTemplate    String    @default("{{description}}") @db.Text // embed description body; title/fields are structured separately
+  mentionRoleId      String? // role to @-mention when a new event message is first posted (null = no mention)
+  enabled            Boolean   @default(true)
   // Only advances on a successful sync (see syncEventSource in
   // src/jobs/eventSync.ts), so staleness alone is already a usable signal —
   // lastError adds a human-readable reason instead of just "it's been a while".
-  lastSyncedAt    DateTime?
-  lastError       String?   @db.Text
-  createdAt       DateTime  @default(now())
-  updatedAt       DateTime  @updatedAt
+  lastSyncedAt       DateTime?
+  lastError          String?   @db.Text
+  createdAt          DateTime  @default(now())
+  updatedAt          DateTime  @updatedAt
 
   @@index([guildId])
 }
