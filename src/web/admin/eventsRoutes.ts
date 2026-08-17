@@ -35,6 +35,17 @@ function parseNameFilterMode(value: unknown): string {
     : "include";
 }
 
+function parseCategoryFilter(value: unknown): string | null {
+  const trimmed = typeof value === "string" ? value.trim() : "";
+  return trimmed === "" ? null : trimmed;
+}
+
+function parseCategoryFilterMode(value: unknown): string {
+  return typeof value === "string" && (VALID_NAME_FILTER_MODES as readonly string[]).includes(value)
+    ? value
+    : "include";
+}
+
 function parseMessageChannelId(value: unknown): string | null {
   const trimmed = typeof value === "string" ? value.trim() : "";
   return trimmed === "" ? null : trimmed;
@@ -81,6 +92,8 @@ eventsRouter.post(
     const lookaheadDays = Number(req.body?.lookaheadDays);
     const nameFilter = parseNameFilter(req.body?.nameFilter);
     const nameFilterMode = parseNameFilterMode(req.body?.nameFilterMode);
+    const categoryFilter = parseCategoryFilter(req.body?.categoryFilter);
+    const categoryFilterMode = parseCategoryFilterMode(req.body?.categoryFilterMode);
     const messageChannelId = parseMessageChannelId(req.body?.messageChannelId);
     const messageTemplate = typeof req.body?.messageTemplate === "string" ? req.body.messageTemplate.trim() : "";
     const mentionRoleId = parseMentionRoleId(req.body?.mentionRoleId);
@@ -113,6 +126,8 @@ eventsRouter.post(
         lookaheadDays,
         nameFilter,
         nameFilterMode,
+        categoryFilter,
+        categoryFilterMode,
         messageChannelId,
         messageTemplate,
         mentionRoleId,
@@ -133,6 +148,8 @@ eventsRouter.post(
     const lookaheadDays = Number(req.body?.lookaheadDays);
     const nameFilter = parseNameFilter(req.body?.nameFilter);
     const nameFilterMode = parseNameFilterMode(req.body?.nameFilterMode);
+    const categoryFilter = parseCategoryFilter(req.body?.categoryFilter);
+    const categoryFilterMode = parseCategoryFilterMode(req.body?.categoryFilterMode);
     const messageChannelId = parseMessageChannelId(req.body?.messageChannelId);
     const messageTemplate = typeof req.body?.messageTemplate === "string" ? req.body.messageTemplate.trim() : "";
     const mentionRoleId = parseMentionRoleId(req.body?.mentionRoleId);
@@ -171,6 +188,8 @@ eventsRouter.post(
         lookaheadDays,
         nameFilter,
         nameFilterMode,
+        categoryFilter,
+        categoryFilterMode,
         messageChannelId,
         messageTemplate,
         mentionRoleId,

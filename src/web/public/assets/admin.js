@@ -61,6 +61,23 @@ document.addEventListener("submit", (event) => {
   });
 })();
 
+// Shows/hides groups of provider-specific fields (wrapped in
+// <div data-provider-fields="tribe|custom">) based on the current value of
+// that form's <select name="provider">, so only the fields that actually
+// apply to the selected provider are shown.
+document.querySelectorAll('select[name="provider"]').forEach((select) => {
+  const form = select.closest("form");
+  if (!form) return;
+  const groups = form.querySelectorAll("[data-provider-fields]");
+  const sync = () => {
+    groups.forEach((group) => {
+      group.hidden = group.dataset.providerFields !== select.value;
+    });
+  };
+  select.addEventListener("change", sync);
+  sync();
+});
+
 // Searchable, categorized dropdown for <select data-channel-picker> —
 // built from the select's own <option>/<optgroup> markup so the server
 // only ever renders one plain <select>, no separate data format to keep in

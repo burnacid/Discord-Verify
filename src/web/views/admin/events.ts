@@ -46,6 +46,19 @@ function nameFilterLabel(source: EventSource): string {
   return `${escapeHtml(source.nameFilter)} <span class="hint">(${modeTag})</span>`;
 }
 
+function categoryFilterLabel(source: EventSource): string {
+  if (!source.categoryFilter) return `<span class="hint">— none —</span>`;
+  const modeTag = source.categoryFilterMode === "exclude" ? "exclude" : "include";
+  return `${escapeHtml(source.categoryFilter)} <span class="hint">(${modeTag})</span>`;
+}
+
+// Wraps a group of provider-specific fields so admin.js can show/hide them
+// based on the form's current "provider" select value (see the
+// [data-provider-fields] handling there).
+function providerGroup(provider: "custom" | "tribe", html: string): string {
+  return `<div data-provider-fields="${provider}">${html}</div>`;
+}
+
 function channelLabel(channelId: string, channels: GuildTextChannel[]): string {
   const channel = channels.find((c) => c.id === channelId);
   if (!channel) return `<span class="hint">${escapeHtml(channelId)}</span>`;
@@ -72,6 +85,7 @@ function sourceRow(source: EventSource, activeCount: number, channels: GuildText
     <td>${escapeHtml(providerLabel(source.provider))}</td>
     <td><code>${escapeHtml(source.apiUrl)}</code></td>
     <td>${nameFilterLabel(source)}</td>
+    <td>${categoryFilterLabel(source)}</td>
     <td>${messageLabel}</td>
     <td>${statusBadge}</td>
     <td>${activeCount}</td>
@@ -86,7 +100,7 @@ function sourceRow(source: EventSource, activeCount: number, channels: GuildText
     </td>
   </tr>
   <tr>
-    <td colspan="9">
+    <td colspan="10">
       <details>
         <summary class="hint">Edit</summary>
         <form method="post" action="/admin/events/${source.id}/edit" class="mt-sm">
@@ -107,17 +121,30 @@ function sourceRow(source: EventSource, activeCount: number, channels: GuildText
           <select id="nameFilterMode-${source.id}" name="nameFilterMode">${nameFilterModeOptions(source.nameFilterMode)}</select>
           <div class="hint">"Include only matches" syncs only events whose title contains a keyword above; "Exclude matches" syncs everything except those. Only matters if a name filter is set.</div>
 
-          <label for="timezone-${source.id}">Timezone (IANA name)</label>
-          <input type="text" id="timezone-${source.id}" name="timezone" value="${escapeHtml(source.timezone)}" />
-          <div class="hint">Ignored for "The Events Calendar" sources — they already provide UTC times.</div>
+          ${providerGroup(
+            "tribe",
+            `<label for="categoryFilter-${source.id}">Category filter (optional)</label>
+          <input type="text" id="categoryFilter-${source.id}" name="categoryFilter" value="${source.categoryFilter ? escapeHtml(source.categoryFilter) : ""}" placeholder="e.g. tabletop, tournament" />
+          <div class="hint">Comma-separated category slugs (as used in the WordPress category URL). Leave blank to sync every category.</div>
 
-          <label for="durationMinutes-${source.id}">Default event duration (minutes)</label>
-          <input type="number" id="durationMinutes-${source.id}" name="durationMinutes" min="1" value="${source.durationMinutes}" />
-          <div class="hint">Ignored for "The Events Calendar" sources — they already provide an end time.</div>
+          <label for="categoryFilterMode-${source.id}">Category filter mode</label>
+          <select id="categoryFilterMode-${source.id}" name="categoryFilterMode">${nameFilterModeOptions(source.categoryFilterMode)}</select>
+          <div class="hint">"Include only matches" syncs only events in a category above; "Exclude matches" syncs everything except those. Only matters if a category filter is set.</div>
 
           <label for="lookaheadDays-${source.id}">Lookahead (days)</label>
           <input type="number" id="lookaheadDays-${source.id}" name="lookaheadDays" min="1" value="${source.lookaheadDays}" />
-          <div class="hint">Only used for "The Events Calendar" sources — only events starting within this many days are collected.</div>
+          <div class="hint">Only events starting within this many days are collected.</div>`,
+          )}
+          ${providerGroup(
+            "custom",
+            `<label for="timezone-${source.id}">Timezone (IANA name)</label>
+          <input type="text" id="timezone-${source.id}" name="timezone" value="${escapeHtml(source.timezone)}" />
+          <div class="hint">The API's dates have no timezone info, so this is used to resolve them (handles DST automatically).</div>
+
+          <label for="durationMinutes-${source.id}">Default event duration (minutes)</label>
+          <input type="number" id="durationMinutes-${source.id}" name="durationMinutes" min="1" value="${source.durationMinutes}" />
+          <div class="hint">The API only gives a start time, so this is used to compute the end time.</div>`,
+          )}
 
           <label for="messageChannelId-${source.id}">Post a message per event to</label>
           <select id="messageChannelId-${source.id}" name="messageChannelId" data-channel-picker>
@@ -166,7 +193,7 @@ export function eventsPage(
         ? `<div class="card empty">No event sources configured yet.</div>`
         : `<div class="table-wrap"><table>
           <thead>
-            <tr><th>Name</th><th>Provider</th><th>API URL</th><th>Name filter</th><th>Message channel</th><th>Status</th><th>Active events</th><th>Last synced</th><th></th></tr>
+            <tr><th>Name</th><th>Provider</th><th>API URL</th><th>Name filter</th><th>Category filter</th><th>Message channel</th><th>Status</th><th>Active events</th><th>Last synced</th><th></th></tr>
           </thead>
           <tbody>${sources.map((s, i) => sourceRow(s, activeCounts[i], channels, roles)).join("")}</tbody>
         </table></div>`
@@ -196,17 +223,30 @@ export function eventsPage(
         <select id="nameFilterMode" name="nameFilterMode">${nameFilterModeOptions("include")}</select>
         <div class="hint">"Include only matches" syncs only events whose title contains a keyword above; "Exclude matches" syncs everything except those. Only matters if a name filter is set.</div>
 
-        <label for="timezone">Timezone (IANA name)</label>
-        <input type="text" id="timezone" name="timezone" value="Europe/Amsterdam" required />
-        <div class="hint">Only used for the Custom JSON API provider, whose dates have no timezone info (handles DST automatically). Ignored for The Events Calendar.</div>
+        ${providerGroup(
+          "tribe",
+          `<label for="categoryFilter">Category filter (optional)</label>
+        <input type="text" id="categoryFilter" name="categoryFilter" placeholder="e.g. tabletop, tournament" />
+        <div class="hint">Comma-separated category slugs (as used in the WordPress category URL). Leave blank to sync every category.</div>
 
-        <label for="durationMinutes">Default event duration (minutes)</label>
-        <input type="number" id="durationMinutes" name="durationMinutes" min="1" value="240" required />
-        <div class="hint">Only used for the Custom JSON API provider, which only gives a start time. Ignored for The Events Calendar.</div>
+        <label for="categoryFilterMode">Category filter mode</label>
+        <select id="categoryFilterMode" name="categoryFilterMode">${nameFilterModeOptions("include")}</select>
+        <div class="hint">"Include only matches" syncs only events in a category above; "Exclude matches" syncs everything except those. Only matters if a category filter is set.</div>
 
         <label for="lookaheadDays">Lookahead (days)</label>
-        <input type="number" id="lookaheadDays" name="lookaheadDays" min="1" value="7" required />
-        <div class="hint">Only used for The Events Calendar provider — only events starting within this many days are collected. Ignored for the Custom JSON API.</div>
+        <input type="number" id="lookaheadDays" name="lookaheadDays" min="1" value="7" />
+        <div class="hint">Only events starting within this many days are collected.</div>`,
+        )}
+        ${providerGroup(
+          "custom",
+          `<label for="timezone">Timezone (IANA name)</label>
+        <input type="text" id="timezone" name="timezone" value="Europe/Amsterdam" />
+        <div class="hint">The API's dates have no timezone info, so this is used to resolve them (handles DST automatically).</div>
+
+        <label for="durationMinutes">Default event duration (minutes)</label>
+        <input type="number" id="durationMinutes" name="durationMinutes" min="1" value="240" />
+        <div class="hint">The API only gives a start time, so this is used to compute the end time.</div>`,
+        )}
 
         <label for="messageChannelId">Post a message per event to</label>
         <select id="messageChannelId" name="messageChannelId" data-channel-picker>
