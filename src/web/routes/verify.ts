@@ -2,9 +2,9 @@ import { Router, json } from "express";
 import { isIP } from "node:net";
 import { prisma } from "../../db.js";
 import { config } from "../../config.js";
-import { getRuntimeSettings } from "../../runtimeSettings.js";
 import { geoProvider } from "../../geo/provider.js";
 import { isPrivateIp } from "../../geo/privateIp.js";
+import { isGeoAllowed, geoReasonMessage } from "../../geo/policy.js";
 import { verifyTurnstileToken } from "../../captcha/turnstile.js";
 import { assignVerifiedRole } from "../../bot/verificationService.js";
 import { createReviewEntry } from "../../bot/reviewQueue.js";
@@ -75,19 +75,6 @@ async function ensureGeoCheck(
   return { ...result, ip };
 }
 
-function isAutoVerified(geo: GeoResult, guildId: string): boolean {
-  const settings = getRuntimeSettings(guildId);
-  const countryAllowed = geo.countryCode !== null && settings.allowedCountries.includes(geo.countryCode);
-  const lowRisk = geo.fraudScore <= settings.maxFraudScore && !geo.isVpn;
-  return countryAllowed && lowRisk;
-}
-
-function reasonMessage(geo: GeoResult): string {
-  return geo.isVpn
-    ? "We detected a VPN or proxy connection, so we can't verify you automatically."
-    : "Your country isn't on our auto-verify list.";
-}
-
 verifyRouter.get("/verify/:token", verifyLimiter, asyncHandler(async (req, res) => {
   if (isLinkPreviewBot(req.headers["user-agent"])) {
     res.send(linkPreviewPage());
@@ -139,7 +126,7 @@ verifyRouter.get("/verify/:token", verifyLimiter, asyncHandler(async (req, res) 
     data: { country: geo.countryCode, ipRiskScore: geo.fraudScore, lastIp: geo.ip },
   });
 
-  if (isAutoVerified(geo, record.guildId)) {
+  if (isGeoAllowed(geo, record.guildId)) {
     try {
       await assignVerifiedRole(record.discordId, record.guildId);
     } catch (err) {
@@ -158,7 +145,7 @@ verifyRouter.get("/verify/:token", verifyLimiter, asyncHandler(async (req, res) 
     return;
   }
 
-  res.send(reviewFormPage(reasonMessage(geo), config.captcha.siteKey));
+  res.send(reviewFormPage(geoReasonMessage(geo), config.captcha.siteKey));
 }));
 
 verifyRouter.post("/verify/:token", verifyLimiter, asyncHandler(async (req, res) => {
@@ -212,7 +199,7 @@ verifyRouter.post("/verify/:token", verifyLimiter, asyncHandler(async (req, res)
   }
 
   if (errors.name || errors.email || errors.captcha) {
-    res.status(400).send(reviewFormPage(reasonMessage(geo), config.captcha.siteKey, errors));
+    res.status(400).send(reviewFormPage(geoReasonMessage(geo), config.captcha.siteKey, errors));
     return;
   }
 

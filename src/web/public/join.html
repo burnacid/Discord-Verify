@@ -67,6 +67,13 @@
       a.retry:hover {
         background: var(--accent-hover);
       }
+      .card.captcha p.reason {
+        margin-bottom: 16px;
+      }
+      #captcha-container {
+        display: flex;
+        justify-content: center;
+      }
     </style>
   </head>
   <body>
@@ -75,30 +82,119 @@
       <h1>Getting your invite ready…</h1>
       <p>You'll be redirected to our Discord server in a moment.</p>
     </div>
+    <div class="card captcha" id="captcha" style="display: none">
+      <h1>One more step</h1>
+      <p class="reason" id="captcha-reason"></p>
+      <div id="captcha-container"></div>
+    </div>
     <div class="card error" id="error">
       <h1>Couldn't create an invite</h1>
-      <p>Something went wrong on our end. Please try again in a moment.</p>
+      <p id="error-message">Something went wrong on our end. Please try again in a moment.</p>
       <a class="retry" href="/join">Try again</a>
     </div>
+    <script src="https://challenges.cloudflare.com/turnstile/v0/api.js" async defer></script>
     <script>
-      (async () => {
-        try {
-          // Path is /join/:guildId — this same static file is served for
-          // every guild, so the guild is read from the URL rather than
-          // hardcoded.
-          const guildId = window.location.pathname.split("/")[2];
-          // Forwards ?ref=<source> from the join link (e.g. /join/123?ref=twitter)
-          // so the server can log where this visit came from.
-          const ref = new URLSearchParams(window.location.search).get("ref");
-          const inviteUrl = `/join/${guildId}/invite` + (ref ? `?ref=${encodeURIComponent(ref)}` : "");
-          const res = await fetch(inviteUrl);
-          if (!res.ok) throw new Error("bad response");
-          const { url } = await res.json();
-          window.location.replace(url);
-        } catch (err) {
+      (function () {
+        // Path is /join/:guildId — this same static file is served for
+        // every guild, so the guild is read from the URL rather than
+        // hardcoded.
+        var guildId = window.location.pathname.split("/")[2];
+        // Forwards ?ref=<source> from the join link (e.g. /join/123?ref=twitter)
+        // so the server can log where this visit came from.
+        var ref = new URLSearchParams(window.location.search).get("ref");
+        var refSuffix = ref ? "ref=" + encodeURIComponent(ref) : "";
+        var inviteUrl = "/join/" + guildId + "/invite";
+
+        function showError(message) {
           document.getElementById("loading").style.display = "none";
+          document.getElementById("captcha").style.display = "none";
+          document.getElementById("error-message").textContent =
+            message || "Something went wrong on our end. Please try again in a moment.";
           document.getElementById("error").style.display = "block";
         }
+
+        function withQuery(extra) {
+          var parts = [refSuffix, extra].filter(Boolean);
+          return inviteUrl + (parts.length ? "?" + parts.join("&") : "");
+        }
+
+        // Same private-IP fallback as verify.ts's detectingIpPage: ask the
+        // browser for its own public IP so the server (which only sees a
+        // private one, e.g. behind a reverse proxy in local dev) can run
+        // the GeoIP/VPN check against it instead.
+        function detectClientIp() {
+          return new Promise(function (resolve) {
+            var timeout = setTimeout(function () { resolve(null); }, 5000);
+            fetch("https://api.ipify.org?format=json")
+              .then(function (res) { return res.json(); })
+              .then(function (data) {
+                clearTimeout(timeout);
+                resolve(data && data.ip ? data.ip : null);
+              })
+              .catch(function () {
+                clearTimeout(timeout);
+                resolve(null);
+              });
+          });
+        }
+
+        function showCaptcha(reason, siteKey) {
+          document.getElementById("loading").style.display = "none";
+          document.getElementById("captcha-reason").textContent = reason;
+          document.getElementById("captcha").style.display = "block";
+
+          function render() {
+            window.turnstile.render("#captcha-container", {
+              sitekey: siteKey,
+              callback: function (token) {
+                submitCaptcha(token);
+              },
+            });
+          }
+          if (window.turnstile) {
+            render();
+          } else {
+            // Script tag is async — poll briefly until it's ready.
+            var wait = setInterval(function () {
+              if (window.turnstile) {
+                clearInterval(wait);
+                render();
+              }
+            }, 100);
+          }
+        }
+
+        function submitCaptcha(captchaToken) {
+          fetch(withQuery(), {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ captchaToken: captchaToken }),
+          })
+            .then(handleResponse)
+            .catch(function () { showError(); });
+        }
+
+        function handleResponse(res) {
+          return res.json().then(function (body) {
+            if (res.ok && body.url) {
+              window.location.replace(body.url);
+              return;
+            }
+            if (res.status === 200 && body.needsClientIp) {
+              return detectClientIp().then(function (ip) {
+                var extra = ip ? "clientIp=" + encodeURIComponent(ip) : "";
+                return fetch(withQuery(extra)).then(handleResponse);
+              });
+            }
+            if (res.status === 403 && body.requireCaptcha) {
+              showCaptcha(body.reason || "Please complete a quick verification challenge to continue.", body.siteKey);
+              return;
+            }
+            showError(body.error);
+          });
+        }
+
+        fetch(withQuery()).then(handleResponse).catch(function () { showError(); });
       })();
     </script>
   </body>
