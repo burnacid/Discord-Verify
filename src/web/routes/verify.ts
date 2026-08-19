@@ -145,7 +145,7 @@ verifyRouter.get("/verify/:token", verifyLimiter, asyncHandler(async (req, res) 
     return;
   }
 
-  res.send(reviewFormPage(geoReasonMessage(geo), config.captcha.siteKey));
+  res.send(reviewFormPage(geoReasonMessage(geo, "verify"), config.captcha.siteKey));
 }));
 
 verifyRouter.post("/verify/:token", verifyLimiter, asyncHandler(async (req, res) => {
@@ -199,7 +199,7 @@ verifyRouter.post("/verify/:token", verifyLimiter, asyncHandler(async (req, res)
   }
 
   if (errors.name || errors.email || errors.captcha) {
-    res.status(400).send(reviewFormPage(geoReasonMessage(geo), config.captcha.siteKey, errors));
+    res.status(400).send(reviewFormPage(geoReasonMessage(geo, "verify"), config.captcha.siteKey, errors));
     return;
   }
 
