@@ -67,6 +67,18 @@
       a.retry:hover {
         background: var(--accent-hover);
       }
+      footer {
+        margin-top: 20px;
+        text-align: center;
+        font-size: 0.8rem;
+      }
+      footer a {
+        color: var(--text-muted);
+        text-decoration: none;
+      }
+      footer a:hover {
+        text-decoration: underline;
+      }
       .card.captcha p.reason {
         margin-bottom: 16px;
       }
@@ -77,6 +89,7 @@
     </style>
   </head>
   <body>
+    <div>
     <div class="card" id="loading">
       <div class="spinner"></div>
       <h1>Getting your invite ready…</h1>
@@ -91,6 +104,8 @@
       <h1>Couldn't create an invite</h1>
       <p id="error-message">Something went wrong on our end. Please try again in a moment.</p>
       <a class="retry" href="/join">Try again</a>
+    </div>
+    <footer><a href="/privacy">Privacy Policy</a></footer>
     </div>
     <script src="https://challenges.cloudflare.com/turnstile/v0/api.js" async defer></script>
     <script>

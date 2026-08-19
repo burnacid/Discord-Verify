@@ -1,4 +1,4 @@
-export function renderPage(title: string, bodyHtml: string, extraHead = ""): string {
+export function renderPage(title: string, bodyHtml: string, extraHead = "", cardClass = ""): string {
   return `<!doctype html>
 <html lang="en">
   <head>
@@ -22,6 +22,32 @@ export function renderPage(title: string, bodyHtml: string, extraHead = ""): str
         padding: 32px;
         text-align: center;
         box-shadow: 0 8px 24px rgba(0, 0, 0, 0.35);
+      }
+      .card.wide {
+        max-width: 720px;
+        text-align: left;
+      }
+      .card.wide h1 {
+        text-align: center;
+      }
+      .card.wide h2 {
+        font-size: 1rem;
+        margin: 28px 0 8px;
+      }
+      .card.wide p, .card.wide li {
+        text-align: left;
+      }
+      .card.wide ul {
+        margin: 0 0 4px;
+        padding-left: 20px;
+      }
+      .card.wide li {
+        margin-bottom: 10px;
+      }
+      @media (max-width: 480px) {
+        .card {
+          padding: 20px;
+        }
       }
       .icon {
         width: 56px;
@@ -82,10 +108,25 @@ export function renderPage(title: string, bodyHtml: string, extraHead = ""): str
         font-size: 0.85rem;
         margin-top: 4px;
       }
+      footer {
+        margin-top: 20px;
+        text-align: center;
+        font-size: 0.8rem;
+      }
+      footer a {
+        color: var(--text-muted);
+        text-decoration: none;
+      }
+      footer a:hover {
+        text-decoration: underline;
+      }
     </style>
   </head>
   <body>
-    <div class="card">${bodyHtml}</div>
+    <div>
+      <div class="card${cardClass ? ` ${cardClass}` : ""}">${bodyHtml}</div>
+      <footer><a href="/privacy">Privacy Policy</a></footer>
+    </div>
   </body>
 </html>`;
 }
