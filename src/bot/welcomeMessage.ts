@@ -95,28 +95,46 @@ export async function renderWelcomeTemplate(template: string, member: GuildMembe
   return rendered.length > 2000 ? rendered.slice(0, 1997) + "…" : rendered;
 }
 
-// Discord's gateway can redeliver a guildMemberAdd dispatch for the same
-// join (e.g. around a session resume) even though this handler is only
-// ever registered once. Dedupe on (guild, member) for a short window so a
-// redelivered event doesn't post the welcome message twice.
-const recentWelcomes = new Map<string, number>();
-const DEDUPE_WINDOW_MS = 60_000;
+// Discord can redeliver or re-trigger a guildMemberAdd dispatch for the
+// same join — around a gateway resume, or via Discord's Onboarding flow —
+// and a bare in-memory dedupe only protects a single process for as long
+// as it's alive, resetting on every restart. Persist to the DB instead, so
+// at most one welcome message goes out per (guild, member) per window,
+// even across restarts or (in theory) multiple running instances.
+const WELCOME_DEDUPE_WINDOW_MS = 10 * 60_000;
 
-function isDuplicateJoin(member: GuildMember): boolean {
-  const key = `${member.guild.id}:${member.id}`;
-  const now = Date.now();
+function isUniqueConstraintError(err: unknown): boolean {
+  return typeof err === "object" && err !== null && "code" in err && err.code === "P2002";
+}
 
-  for (const [k, sentAt] of recentWelcomes) {
-    if (now - sentAt > DEDUPE_WINDOW_MS) recentWelcomes.delete(k);
+async function isDuplicateJoin(member: GuildMember): Promise<boolean> {
+  const discordId = member.id;
+  const guildId = member.guild.id;
+  const now = new Date();
+
+  // First join we've seen for this (guild, member): the row doesn't exist
+  // yet, so try to create it. The unique constraint on (discordId, guildId)
+  // means only one of several concurrent calls can win this race.
+  try {
+    await prisma.welcomeLog.create({ data: { discordId, guildId, sentAt: now } });
+    return false;
+  } catch (err) {
+    if (!isUniqueConstraintError(err)) throw err;
   }
 
-  if (recentWelcomes.has(key)) return true;
-  recentWelcomes.set(key, now);
-  return false;
+  // A row already exists. Only refresh it (and allow a resend) if it's
+  // older than the dedupe window — done as a single conditional UPDATE so
+  // two calls racing here can't both see a stale row and both proceed.
+  const cutoff = new Date(now.getTime() - WELCOME_DEDUPE_WINDOW_MS);
+  const { count } = await prisma.welcomeLog.updateMany({
+    where: { discordId, guildId, sentAt: { lt: cutoff } },
+    data: { sentAt: now },
+  });
+  return count === 0;
 }
 
 export async function sendWelcomeMessage(member: GuildMember): Promise<void> {
-  if (isDuplicateJoin(member)) return;
+  if (await isDuplicateJoin(member)) return;
 
   const settings = await getWelcomeSettings(member.guild.id);
   if (!settings.enabled || !settings.channelId) return;
