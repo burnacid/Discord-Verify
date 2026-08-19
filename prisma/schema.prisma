@@ -200,6 +200,20 @@ model WelcomeSettings {
   updatedAt DateTime @updatedAt
 }
 
+// Tracks the last time a welcome message was sent for a (guild, member)
+// pair, so sendWelcomeMessage() (src/bot/welcomeMessage.ts) can rate-limit
+// to one send per 10 minutes even across process restarts and duplicate
+// guildMemberAdd dispatches (e.g. gateway resumes, or Discord's Onboarding
+// flow re-triggering the event) — the previous in-memory-only dedupe reset
+// on every restart and only protected a single process.
+model WelcomeLog {
+  discordId String
+  guildId   String
+  sentAt    DateTime @default(now())
+
+  @@id([discordId, guildId])
+}
+
 // One row per guild — configures a channel that, when a not-yet-verified
 // member posts in it, gets sent a verification link by DM. Same pattern as
 // WelcomeSettings.
