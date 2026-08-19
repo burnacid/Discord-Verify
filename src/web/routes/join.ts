@@ -130,7 +130,7 @@ joinRouter.get("/join/:guildId/invite", joinInviteLimiter, asyncHandler(async (r
     res.status(403).json({
       requireCaptcha: true,
       siteKey: config.captcha.siteKey,
-      reason: geoReasonMessage(geo),
+      reason: geoReasonMessage(geo, "join"),
     });
     return;
   }
