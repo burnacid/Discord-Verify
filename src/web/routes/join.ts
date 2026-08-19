@@ -11,7 +11,7 @@ import { isGeoAllowed, geoReasonMessage } from "../../geo/policy.js";
 import { verifyTurnstileToken } from "../../captcha/turnstile.js";
 import { joinInviteLimiter } from "../rateLimit.js";
 import { asyncHandler } from "../asyncHandler.js";
-import { notFoundPage } from "../views/verifyPages.js";
+import { notFoundPage, privacyPage } from "../views/verifyPages.js";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const joinPagePath = path.join(__dirname, "..", "public", "join.html");
@@ -25,6 +25,10 @@ export const joinRouter = Router();
 
 joinRouter.get("/", (_req, res) => {
   res.redirect(302, "/join");
+});
+
+joinRouter.get("/privacy", (_req, res) => {
+  res.send(privacyPage());
 });
 
 // /join with no guild id resolves automatically when this bot serves
