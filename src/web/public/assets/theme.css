@@ -304,15 +304,70 @@ h2 {
   margin-top: 4px;
 }
 
-/* Wrap a <table> in this so wide tables (e.g. Game Day Events' 9 columns)
-   scroll horizontally on narrow viewports instead of clipping the page —
-   a plain `table { display: block }` trick breaks column alignment between
-   thead/tbody, so a real wrapper element is used instead. */
+/* Wrap a <table> in this so wide tables scroll horizontally on narrow
+   viewports instead of clipping the page — a plain `table { display: block }`
+   trick breaks column alignment between thead/tbody, so a real wrapper
+   element is used instead. */
 .table-wrap {
   width: 100%;
   overflow-x: auto;
   border-radius: var(--radius-md);
   border: 1px solid var(--border);
+}
+
+/* ---- Card list (e.g. Game Day Events) ----
+   A stacked card per row instead of a wide multi-column table — avoids the
+   horizontal scroll a table with many columns forces on narrow viewports,
+   and gives each row room for a label above its value. */
+.card-list {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+  margin-bottom: 20px;
+}
+.item-card-header {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 12px;
+  flex-wrap: wrap;
+}
+.item-card-title {
+  font-size: 0.98rem;
+  font-weight: 700;
+}
+.item-card-title .hint {
+  font-weight: 500;
+  margin-left: 6px;
+}
+.item-card-actions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-shrink: 0;
+}
+.item-card-meta {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+  gap: 14px;
+  margin-top: 16px;
+  font-size: 0.85rem;
+}
+.item-card-meta .meta-label {
+  font-size: 0.68rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: var(--text-faint);
+  margin-bottom: 3px;
+}
+.item-card-meta code {
+  word-break: break-all;
+}
+.item-card details {
+  margin-top: 16px;
+  border-top: 1px solid var(--border);
+  padding-top: 14px;
 }
 
 table {

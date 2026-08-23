@@ -252,6 +252,21 @@ model EventSource {
   @@index([guildId])
 }
 
+// Per-category role mention rule for an EventSource. An event can carry
+// multiple categories; every matching rule's role gets mentioned (deduped),
+// in addition to falling back to EventSource.mentionRoleId if nothing matches.
+model EventCategoryRule {
+  id            String   @id @default(uuid())
+  guildId       String
+  sourceId      String
+  categorySlug  String
+  mentionRoleId String
+  createdAt     DateTime @default(now())
+
+  @@index([guildId])
+  @@index([sourceId])
+}
+
 // No DB-level relation/cascade to EventSource — deleting a source must also
 // delete the live Discord scheduled events/messages it created, which a DB
 // cascade can't do by itself. That cleanup happens explicitly in

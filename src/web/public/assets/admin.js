@@ -398,3 +398,40 @@ function buildMentionAutocomplete(textarea) {
     options[nextIndex].classList.add("highlighted");
   });
 }
+
+// Add/delete controls for per-source category role rules (events admin page).
+// These live inside the source's edit <form> (so they render right next to
+// the other category settings) — an actual nested <form> there would be
+// invalid HTML and get silently dropped by the browser's parser, so these
+// are plain buttons handled via fetch + a full-page redirect to the flash
+// response, instead of a second real <form> submit.
+document.addEventListener("click", async (event) => {
+  const addBtn = event.target.closest("[data-add-rule]");
+  const deleteBtn = event.target.closest("[data-delete-rule]");
+  if (!addBtn && !deleteBtn) return;
+
+  event.preventDefault();
+  const panel = (addBtn || deleteBtn).closest("[data-rules-panel]");
+  if (!panel) return;
+  const sourceId = panel.dataset.sourceId;
+
+  let url;
+  let body;
+  if (addBtn) {
+    const categorySlug = panel.querySelector("[data-rule-category]").value.trim();
+    const mentionRoleId = panel.querySelector("[data-rule-role]").value;
+    if (!categorySlug || !mentionRoleId) return;
+    url = `/admin/events/${sourceId}/rules`;
+    body = new URLSearchParams({ categorySlug, mentionRoleId });
+  } else {
+    url = `/admin/events/${sourceId}/rules/${deleteBtn.dataset.deleteRule}/delete`;
+    body = new URLSearchParams();
+  }
+
+  const res = await fetch(url, {
+    method: "POST",
+    headers: { "Content-Type": "application/x-www-form-urlencoded" },
+    body,
+  });
+  location.href = res.url;
+});
