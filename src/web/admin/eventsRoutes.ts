@@ -1,6 +1,6 @@
 import { Router } from "express";
 import { prisma } from "../../db.js";
-import { syncAllEventSources, deleteAllEventsForSource } from "../../jobs/eventSync.js";
+import { syncAllEventSources, deleteAllEventsForSource, clearAllEventsForSource } from "../../jobs/eventSync.js";
 import { fetchGuildTextChannels, fetchGuildRoles } from "../../bot/channelLookup.js";
 import { asyncHandler } from "../asyncHandler.js";
 import { requireAdmin } from "./session.js";
@@ -69,15 +69,16 @@ eventsRouter.get(
     const guildId = req.session.guildId!;
     const flash = typeof req.query.flash === "string" ? req.query.flash : undefined;
     const flashKind = parseFlashKind(req.query.flashKind);
-    const [sources, channels, roles] = await Promise.all([
+    const [sources, channels, roles, rules] = await Promise.all([
       prisma.eventSource.findMany({ where: { guildId }, orderBy: { createdAt: "asc" } }),
       fetchGuildTextChannels(guildId),
       fetchGuildRoles(guildId),
+      prisma.eventCategoryRule.findMany({ where: { guildId }, orderBy: { createdAt: "asc" } }),
     ]);
     const activeCounts = await Promise.all(
       sources.map((s) => prisma.eventSourceItem.count({ where: { sourceId: s.id } })),
     );
-    res.send(eventsPage(adminUser(req), sources, activeCounts, channels, roles, flash, flashKind));
+    res.send(eventsPage(adminUser(req), sources, activeCounts, channels, roles, rules, flash, flashKind));
   }),
 );
 
@@ -213,6 +214,24 @@ eventsRouter.post(
 );
 
 eventsRouter.post(
+  "/admin/events/:id/clear",
+  asyncHandler(async (req, res) => {
+    const source = await findOwnedSource(req.params.id, req.session.guildId!);
+    if (!source) {
+      res.redirect(`/admin/events?${flashQuery("Source not found.", "error")}`);
+      return;
+    }
+    try {
+      const count = await clearAllEventsForSource(source);
+      res.redirect(`/admin/events?${flashQuery(`Cleared ${count} event(s).`)}`);
+    } catch (err) {
+      console.error(`Failed to clear events for source "${source.name}"`, err);
+      res.redirect(`/admin/events?${flashQuery("Clearing events failed — see server logs.", "error")}`);
+    }
+  }),
+);
+
+eventsRouter.post(
   "/admin/events/:id/delete",
   asyncHandler(async (req, res) => {
     const source = await findOwnedSource(req.params.id, req.session.guildId!);
@@ -226,6 +245,47 @@ eventsRouter.post(
       await prisma.eventSource.delete({ where: { id: source.id } }).catch(() => {});
     }
     res.redirect(`/admin/events?${flashQuery("Source and its events deleted.")}`);
+  }),
+);
+
+eventsRouter.post(
+  "/admin/events/:id/rules",
+  asyncHandler(async (req, res) => {
+    const source = await findOwnedSource(req.params.id, req.session.guildId!);
+    if (!source) {
+      res.redirect(`/admin/events?${flashQuery("Source not found.", "error")}`);
+      return;
+    }
+
+    const categorySlug = typeof req.body?.categorySlug === "string" ? req.body.categorySlug.trim().toLowerCase() : "";
+    const mentionRoleId = typeof req.body?.mentionRoleId === "string" ? req.body.mentionRoleId.trim() : "";
+
+    if (!categorySlug || !mentionRoleId) {
+      res.redirect(`/admin/events?${flashQuery("Category slug and role are both required.", "error")}`);
+      return;
+    }
+
+    await prisma.eventCategoryRule.create({
+      data: { guildId: source.guildId, sourceId: source.id, categorySlug, mentionRoleId },
+    });
+    res.redirect(`/admin/events?${flashQuery("Rule added.")}`);
+  }),
+);
+
+eventsRouter.post(
+  "/admin/events/:id/rules/:ruleId/delete",
+  asyncHandler(async (req, res) => {
+    const source = await findOwnedSource(req.params.id, req.session.guildId!);
+    if (!source) {
+      res.redirect(`/admin/events?${flashQuery("Source not found.", "error")}`);
+      return;
+    }
+
+    const rule = await prisma.eventCategoryRule.findUnique({ where: { id: req.params.ruleId } });
+    if (rule && rule.sourceId === source.id) {
+      await prisma.eventCategoryRule.delete({ where: { id: rule.id } }).catch(() => {});
+    }
+    res.redirect(`/admin/events?${flashQuery("Rule removed.")}`);
   }),
 );
 

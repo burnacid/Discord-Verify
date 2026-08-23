@@ -1,6 +1,6 @@
 import { EmbedBuilder, GuildScheduledEventEntityType, GuildScheduledEventPrivacyLevel } from "discord.js";
 import type { Guild } from "discord.js";
-import type { EventSource } from "@prisma/client";
+import type { EventSource, EventCategoryRule } from "@prisma/client";
 import { prisma } from "../db.js";
 import { client } from "../bot/client.js";
 import { runTracked } from "./jobTracking.js";
@@ -322,6 +322,22 @@ function buildEventEmbed(source: EventSource, item: NormalizedItem): EmbedBuilde
   return embed;
 }
 
+// Every rule whose category matches one of the item's categories contributes
+// its role — an event can carry several categories, so several roles can be
+// mentioned at once. Falls back to the source's single default role when
+// nothing matches, so sources with no rules configured keep their old
+// behavior unchanged.
+function resolveMentionRoleIds(
+  source: EventSource,
+  rules: EventCategoryRule[],
+  item: NormalizedItem,
+): string[] {
+  const matched = rules.filter((rule) => item.categorySlugs.includes(rule.categorySlug.toLowerCase()));
+  const roleIds = [...new Set(matched.map((rule) => rule.mentionRoleId))];
+  if (roleIds.length === 0 && source.mentionRoleId) return [source.mentionRoleId];
+  return roleIds;
+}
+
 async function fetchMessageChannel(channelId: string) {
   const channel = await client.channels.fetch(channelId).catch(() => null);
   if (!channel?.isTextBased() || channel.isThread() || channel.isDMBased()) return null;
@@ -337,6 +353,7 @@ async function upsertEventMessage(
   source: EventSource,
   existingMessageId: string | null,
   item: NormalizedItem,
+  mentionRoleIds: string[],
 ): Promise<string | null> {
   if (!source.messageChannelId) return null;
   const channel = await fetchMessageChannel(source.messageChannelId);
@@ -353,7 +370,10 @@ async function upsertEventMessage(
     }
   }
 
-  const content = source.mentionRoleId ? `<@&${source.mentionRoleId}> New event available!` : "";
+  const content =
+    mentionRoleIds.length > 0
+      ? `${mentionRoleIds.map((id) => `<@&${id}>`).join(" ")} New event available!`
+      : "";
   try {
     const posted = await channel.send({ content, embeds: [embed] });
     return posted.id;
@@ -384,19 +404,42 @@ async function createScheduledEvent(guild: Guild, item: NormalizedItem, endTime:
 }
 
 // Deletes every Discord scheduled event and posted message this source has
-// ever created, then drops the tracking rows — used when the source itself
-// (the whole API) is removed, so nothing it created is left behind.
-export async function deleteAllEventsForSource(source: EventSource): Promise<void> {
+// ever created, then drops the tracking rows. Runs one Discord API call pair
+// per event in parallel rather than sequentially — discord.js's own REST
+// rate-limit queue keeps this safe, and doing it in parallel matters here:
+// this is also the emergency "something went wrong and there are 100 of
+// these" cleanup path (see clearAllEventsForSource below), where a one-by-one
+// loop would be painfully slow.
+async function clearTrackedEvents(source: EventSource): Promise<number> {
   const rows = await prisma.eventSourceItem.findMany({ where: { sourceId: source.id } });
-  if (rows.length === 0) return;
+  if (rows.length === 0) return 0;
 
   const guild = await client.guilds.fetch(source.guildId);
-  for (const row of rows) {
-    await guild.scheduledEvents.delete(row.discordEventId).catch(() => {});
-    await deleteEventMessage(source, row.messageId);
-  }
+  await Promise.all(
+    rows.map(async (row) => {
+      await guild.scheduledEvents.delete(row.discordEventId).catch(() => {});
+      await deleteEventMessage(source, row.messageId);
+    }),
+  );
 
   await prisma.eventSourceItem.deleteMany({ where: { sourceId: source.id } });
+  return rows.length;
+}
+
+// Used when the source itself (the whole API connection) is removed, so
+// nothing it created — events, messages, or category rules — is left behind.
+export async function deleteAllEventsForSource(source: EventSource): Promise<void> {
+  await prisma.eventCategoryRule.deleteMany({ where: { sourceId: source.id } });
+  await clearTrackedEvents(source);
+}
+
+// Emergency cleanup: wipes every Discord scheduled event/message this source
+// has created without touching the source's config or rules, so a bad API
+// response (or a bug) that spammed dozens of events can be undone in one
+// click instead of deleting them one by one in Discord. The next sync will
+// simply recreate whatever's still legitimately in the source's feed.
+export function clearAllEventsForSource(source: EventSource): Promise<number> {
+  return clearTrackedEvents(source);
 }
 
 export async function syncEventSource(source: EventSource): Promise<void> {
@@ -410,6 +453,7 @@ export async function syncEventSource(source: EventSource): Promise<void> {
 
   const guild = await client.guilds.fetch(source.guildId);
   const tracked = await prisma.eventSourceItem.findMany({ where: { sourceId: source.id } });
+  const rules = await prisma.eventCategoryRule.findMany({ where: { sourceId: source.id } });
 
   const now = Date.now();
   // "tribe" only ever fetches within this many days, so an item missing
@@ -471,7 +515,7 @@ export async function syncEventSource(source: EventSource): Promise<void> {
     // Same self-healing idea for the posted message: upsertEventMessage
     // already tries to edit the existing one first and only reposts if
     // that fails (e.g. it was deleted manually).
-    const messageId = await upsertEventMessage(source, row.messageId, item);
+    const messageId = await upsertEventMessage(source, row.messageId, item, resolveMentionRoleIds(source, rules, item));
 
     await prisma.eventSourceItem.update({
       where: { id: row.id },
@@ -489,7 +533,7 @@ export async function syncEventSource(source: EventSource): Promise<void> {
 
     try {
       const discordEventId = await createScheduledEvent(guild, item, endTime);
-      const messageId = await upsertEventMessage(source, null, item);
+      const messageId = await upsertEventMessage(source, null, item, resolveMentionRoleIds(source, rules, item));
       await prisma.eventSourceItem.create({
         data: {
           guildId: source.guildId,

@@ -1,6 +1,6 @@
 import { renderAdminPage } from "./layout.js";
 import type { AdminUser, FlashKind } from "./layout.js";
-import type { EventSource } from "@prisma/client";
+import type { EventSource, EventCategoryRule } from "@prisma/client";
 import type { GuildTextChannel, GuildRole } from "../../../bot/channelLookup.js";
 import { DEFAULT_EVENT_MESSAGE_TEMPLATE } from "../../../jobs/eventSync.js";
 import { channelOptions } from "./channelOptions.js";
@@ -67,7 +67,57 @@ function channelLabel(channelId: string, channels: GuildTextChannel[]): string {
     : `#${escapeHtml(channel.name)}`;
 }
 
-function sourceRow(source: EventSource, activeCount: number, channels: GuildTextChannel[], roles: GuildRole[]): string {
+function roleLabel(roleId: string, roles: GuildRole[]): string {
+  const role = roles.find((r) => r.id === roleId);
+  return role ? `@${escapeHtml(role.name)}` : `<span class="hint">${escapeHtml(roleId)}</span>`;
+}
+
+// The add/delete controls here are plain buttons handled by admin.js via
+// fetch, not real <form>s — this whole block renders inside the source's
+// edit <form> (right next to the other category settings), and a nested
+// <form> there would be invalid HTML that the browser silently drops.
+function categoryRulesSection(source: EventSource, rules: EventCategoryRule[], roles: GuildRole[]): string {
+  const rows = rules
+    .map(
+      (rule) => `<tr>
+        <td><code>${escapeHtml(rule.categorySlug)}</code></td>
+        <td>${roleLabel(rule.mentionRoleId, roles)}</td>
+        <td>
+          <button type="button" class="btn-deny" data-delete-rule="${rule.id}">Delete</button>
+        </td>
+      </tr>`,
+    )
+    .join("");
+
+  return `<div data-rules-panel data-source-id="${source.id}">
+    <label>Category role rules</label>
+    <div class="hint">Every rule whose category matches an event mentions its role — an event can match several. Falls back to the role above when no rule matches.</div>
+    ${
+      rules.length > 0
+        ? `<div class="table-wrap"><table>
+          <thead><tr><th>Category slug</th><th>Role</th><th></th></tr></thead>
+          <tbody>${rows}</tbody>
+        </table></div>`
+        : ""
+    }
+    <div class="inline mt-sm">
+      <input type="text" data-rule-category placeholder="e.g. tabletop" />
+      <select data-rule-role>
+        <option value="">— role —</option>
+        ${roleOptions(roles)}
+      </select>
+      <button type="button" class="btn-secondary" data-add-rule>Add rule</button>
+    </div>
+  </div>`;
+}
+
+function sourceRow(
+  source: EventSource,
+  activeCount: number,
+  channels: GuildTextChannel[],
+  roles: GuildRole[],
+  rules: EventCategoryRule[],
+): string {
   const lastSynced = source.lastSyncedAt
     ? source.lastSyncedAt.toISOString().slice(0, 16).replace("T", " ")
     : "never";
@@ -80,30 +130,35 @@ function sourceRow(source: EventSource, activeCount: number, channels: GuildText
     ? `<span class="badge badge-rejected" title="${escapeHtml(source.lastError)}">error</span>`
     : `<span class="badge ${source.enabled ? "badge-verified" : "badge-unverified"}">${source.enabled ? "enabled" : "disabled"}</span>`;
 
-  return `<tr>
-    <td>${escapeHtml(source.name)}</td>
-    <td>${escapeHtml(providerLabel(source.provider))}</td>
-    <td><code>${escapeHtml(source.apiUrl)}</code></td>
-    <td>${nameFilterLabel(source)}</td>
-    <td>${categoryFilterLabel(source)}</td>
-    <td>${messageLabel}</td>
-    <td>${statusBadge}</td>
-    <td>${activeCount}</td>
-    <td>${lastSynced}</td>
-    <td class="actions">
-      <form class="inline" method="post" action="/admin/events/${source.id}/toggle">
-        <button type="submit" class="btn-secondary">${source.enabled ? "Disable" : "Enable"}</button>
-      </form>
-      <form class="inline" method="post" action="/admin/events/${source.id}/delete">
-        <button type="submit" class="btn-deny" onclick="return confirm('Delete this source? All Discord events and messages it created will be removed too.')">Delete</button>
-      </form>
-    </td>
-  </tr>
-  <tr>
-    <td colspan="10">
-      <details>
-        <summary class="hint">Edit</summary>
-        <form method="post" action="/admin/events/${source.id}/edit" class="mt-sm">
+  return `<div class="card">
+    <div class="item-card-header">
+      <div class="item-card-title">${escapeHtml(source.name)} <span class="hint">${escapeHtml(providerLabel(source.provider))}</span></div>
+      <div class="item-card-actions">
+        ${statusBadge}
+        <form class="inline" method="post" action="/admin/events/${source.id}/toggle">
+          <button type="submit" class="btn-secondary">${source.enabled ? "Disable" : "Enable"}</button>
+        </form>
+        <form class="inline" method="post" action="/admin/events/${source.id}/clear">
+          <button type="submit" class="btn-deny" onclick="return confirm('Clear all ${activeCount} event(s) this source created? The source and its settings stay — the next sync recreates whatever is still legitimately in the feed.')">Clear events</button>
+        </form>
+        <form class="inline" method="post" action="/admin/events/${source.id}/delete">
+          <button type="submit" class="btn-deny" onclick="return confirm('Delete this source? All Discord events and messages it created will be removed too.')">Delete</button>
+        </form>
+      </div>
+    </div>
+
+    <div class="item-card-meta">
+      <div><div class="meta-label">API URL</div><code>${escapeHtml(source.apiUrl)}</code></div>
+      <div><div class="meta-label">Name filter</div>${nameFilterLabel(source)}</div>
+      <div><div class="meta-label">Category filter</div>${categoryFilterLabel(source)}</div>
+      <div><div class="meta-label">Message channel</div>${messageLabel}</div>
+      <div><div class="meta-label">Active events</div>${activeCount}</div>
+      <div><div class="meta-label">Last synced</div>${lastSynced}</div>
+    </div>
+
+    <details>
+      <summary class="hint">Edit</summary>
+      <form method="post" action="/admin/events/${source.id}/edit" class="mt-sm">
           <label for="name-${source.id}">Name</label>
           <input type="text" id="name-${source.id}" name="name" value="${escapeHtml(source.name)}" />
 
@@ -133,7 +188,9 @@ function sourceRow(source: EventSource, activeCount: number, channels: GuildText
 
           <label for="lookaheadDays-${source.id}">Lookahead (days)</label>
           <input type="number" id="lookaheadDays-${source.id}" name="lookaheadDays" min="1" value="${source.lookaheadDays}" />
-          <div class="hint">Only events starting within this many days are collected.</div>`,
+          <div class="hint">Only events starting within this many days are collected.</div>
+
+          ${categoryRulesSection(source, rules, roles)}`,
           )}
           ${providerGroup(
             "custom",
@@ -167,8 +224,7 @@ function sourceRow(source: EventSource, activeCount: number, channels: GuildText
           <button type="submit" class="btn-primary mt-md">Save</button>
         </form>
       </details>
-    </td>
-  </tr>`;
+    </div>`;
 }
 
 export function eventsPage(
@@ -177,6 +233,7 @@ export function eventsPage(
   activeCounts: number[],
   channels: GuildTextChannel[],
   roles: GuildRole[],
+  rules: EventCategoryRule[],
   flash?: string,
   flashKind?: FlashKind,
 ): string {
@@ -191,12 +248,9 @@ export function eventsPage(
     ${
       sources.length === 0
         ? `<div class="card empty">No event sources configured yet.</div>`
-        : `<div class="table-wrap"><table>
-          <thead>
-            <tr><th>Name</th><th>Provider</th><th>API URL</th><th>Name filter</th><th>Category filter</th><th>Message channel</th><th>Status</th><th>Active events</th><th>Last synced</th><th></th></tr>
-          </thead>
-          <tbody>${sources.map((s, i) => sourceRow(s, activeCounts[i], channels, roles)).join("")}</tbody>
-        </table></div>`
+        : `<div class="card-list">${sources
+            .map((s, i) => sourceRow(s, activeCounts[i], channels, roles, rules.filter((r) => r.sourceId === s.id)))
+            .join("")}</div>`
     }
 
     <h2>Add a source</h2>
