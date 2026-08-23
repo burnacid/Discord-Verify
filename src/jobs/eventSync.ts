@@ -347,8 +347,10 @@ async function fetchMessageChannel(channelId: string) {
 // Posts a new message, or edits the existing one in place if `existingMessageId`
 // is still valid — returns the resulting message id, or null if messages
 // aren't configured for this source (or the channel/message is unreachable).
-// The configured role is only @-mentioned the first time a message is
-// posted for an event, never on later edits, so updates don't re-ping.
+// The mention line is kept on edits too: Discord only notifies people for
+// mentions present when a message is first *sent*, not when one is edited to
+// contain a mention, so re-including it here doesn't re-ping anyone — it
+// just keeps the "who this is for" tag visible on the message permanently.
 async function upsertEventMessage(
   source: EventSource,
   existingMessageId: string | null,
@@ -360,20 +362,20 @@ async function upsertEventMessage(
   if (!channel) return null;
 
   const embed = buildEventEmbed(source, item);
+  const content =
+    mentionRoleIds.length > 0
+      ? `${mentionRoleIds.map((id) => `<@&${id}>`).join(" ")} New event available!`
+      : "";
 
   if (existingMessageId) {
     try {
-      const edited = await channel.messages.edit(existingMessageId, { content: "", embeds: [embed] });
+      const edited = await channel.messages.edit(existingMessageId, { content, embeds: [embed] });
       return edited.id;
     } catch {
       // Message was likely deleted manually — fall through and repost.
     }
   }
 
-  const content =
-    mentionRoleIds.length > 0
-      ? `${mentionRoleIds.map((id) => `<@&${id}>`).join(" ")} New event available!`
-      : "";
   try {
     const posted = await channel.send({ content, embeds: [embed] });
     return posted.id;
