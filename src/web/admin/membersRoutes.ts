@@ -48,6 +48,7 @@ membersRouter.get(
     }
 
     results = await attachLinkStatus(guildId, results);
+    results = await attachLastVisit(guildId, results);
 
     res.send(
       membersPage(
@@ -149,6 +150,35 @@ async function attachLinkStatus(guildId: string, rows: MemberRow[]): Promise<Mem
       ...row,
       linkSentAt: token?.createdAt ?? null,
       linkExpired: token ? token.expiresAt < new Date() : null,
+    };
+  });
+}
+
+// Most recent verification-link click per row (see VerificationVisit).
+async function attachLastVisit(guildId: string, rows: MemberRow[]): Promise<MemberRow[]> {
+  if (rows.length === 0) return rows;
+
+  const visits = await prisma.verificationVisit.findMany({
+    where: { guildId, discordId: { in: rows.map((r) => r.discordId) } },
+    orderBy: { createdAt: "desc" },
+    distinct: ["discordId"],
+  });
+  const byId = new Map(visits.map((v) => [v.discordId, v]));
+
+  return rows.map((row) => {
+    const v = byId.get(row.discordId);
+    return {
+      ...row,
+      lastVisit: v
+        ? {
+            at: v.createdAt,
+            ip: v.ip,
+            language: v.browserLanguage ?? v.acceptLanguage,
+            screen: v.screenWidth && v.screenHeight ? `${v.screenWidth}×${v.screenHeight}` : null,
+            timezone: v.timezone,
+            userAgent: v.userAgent,
+          }
+        : null,
     };
   });
 }

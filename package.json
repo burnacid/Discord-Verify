@@ -29,8 +29,11 @@
     "@types/express": "^4.17.21",
     "@types/express-session": "^1.19.0",
     "@types/node": "^22.10.2",
-    "prisma": "^6.1.0",
+    "prisma": "^6.19.3",
     "tsx": "^4.19.2",
     "typescript": "^5.7.2"
+  },
+  "overrides": {
+    "deepmerge-ts": "^8.0.0"
   }
 }

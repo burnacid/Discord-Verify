@@ -9,7 +9,7 @@ import { verifyTurnstileToken } from "../../captcha/turnstile.js";
 import { assignVerifiedRole } from "../../bot/verificationService.js";
 import { createReviewEntry } from "../../bot/reviewQueue.js";
 import { asyncHandler } from "../asyncHandler.js";
-import { verifyLimiter } from "../rateLimit.js";
+import { verifyLimiter, visitBeaconLimiter } from "../rateLimit.js";
 import {
   detectingIpPage,
   errorPage,
@@ -17,6 +17,7 @@ import {
   reviewFormPage,
   reviewSubmittedPage,
   successPage,
+  withVisitBeacon,
 } from "../views/verifyPages.js";
 import type { ReviewFormErrors } from "../views/verifyPages.js";
 
@@ -75,6 +76,35 @@ async function ensureGeoCheck(
   return { ...result, ip };
 }
 
+// Logs one VerificationVisit row per click with what the server can see
+// directly, and returns the row id so the rendered page can send the
+// browser-only details (screen size etc.) back via the beacon. Never
+// throws: a logging failure must not block verification.
+async function logVisit(
+  record: { token: string; discordId: string; guildId: string },
+  ip: string | undefined,
+  userAgent: string | undefined,
+  acceptLanguage: string | undefined,
+): Promise<string | null> {
+  try {
+    const visit = await prisma.verificationVisit.create({
+      data: {
+        token: record.token,
+        discordId: record.discordId,
+        guildId: record.guildId,
+        ip: ip ?? "unknown",
+        userAgent: userAgent ? userAgent.slice(0, 1000) : null,
+        acceptLanguage: acceptLanguage ? acceptLanguage.slice(0, 255) : null,
+      },
+      select: { id: true },
+    });
+    return visit.id;
+  } catch (err) {
+    console.error("Failed to log verification visit", err);
+    return null;
+  }
+}
+
 verifyRouter.get("/verify/:token", verifyLimiter, asyncHandler(async (req, res) => {
   if (isLinkPreviewBot(req.headers["user-agent"])) {
     res.send(linkPreviewPage());
@@ -88,25 +118,29 @@ verifyRouter.get("/verify/:token", verifyLimiter, asyncHandler(async (req, res) 
     res.status(404).send(errorPage("Invalid link", "This verification link is invalid."));
     return;
   }
+
+  // Logged before the used/expired checks on purpose: a click on an old
+  // (possibly leaked) link is worth knowing about too.
+  const visitId = await logVisit(record, req.ip, req.headers["user-agent"], req.headers["accept-language"]);
+  const send = (status: number, html: string) => res.status(status).send(withVisitBeacon(html, visitId));
+
   if (record.usedAt) {
-    res
-      .status(410)
-      .send(errorPage("Already used", "This verification link has already been used."));
+    send(410, errorPage("Already used", "This verification link has already been used."));
     return;
   }
   if (record.expiresAt < new Date()) {
-    res.status(410).send(errorPage("Link expired", "This verification link has expired."));
+    send(410, errorPage("Link expired", "This verification link has expired."));
     return;
   }
 
   const ip = req.ip;
   if (!ip) {
-    res.status(400).send(errorPage("Something went wrong", "Could not determine your IP address."));
+    send(400, errorPage("Something went wrong", "Could not determine your IP address."));
     return;
   }
 
   if (config.geo.allowClientIpFallback && !record.geoCheckedAt && isPrivateIp(ip)) {
-    res.send(detectingIpPage(token));
+    send(200, detectingIpPage(token));
     return;
   }
 
@@ -115,9 +149,7 @@ verifyRouter.get("/verify/:token", verifyLimiter, asyncHandler(async (req, res) 
     geo = await ensureGeoCheck(token, record, ip);
   } catch (err) {
     console.error("GeoIP/VPN check failed", err);
-    res
-      .status(502)
-      .send(errorPage("Temporarily unavailable", "Verification service is temporarily unavailable. Please try again shortly."));
+    send(502, errorPage("Temporarily unavailable", "Verification service is temporarily unavailable. Please try again shortly."));
     return;
   }
 
@@ -131,9 +163,7 @@ verifyRouter.get("/verify/:token", verifyLimiter, asyncHandler(async (req, res) 
       await assignVerifiedRole(record.discordId, record.guildId);
     } catch (err) {
       console.error("Failed to assign verified role", err);
-      res
-        .status(500)
-        .send(errorPage("Role assignment failed", "We couldn't update your Discord roles. Please try again or contact a moderator."));
+      send(500, errorPage("Role assignment failed", "We couldn't update your Discord roles. Please try again or contact a moderator."));
       return;
     }
     await prisma.verificationToken.update({ where: { token }, data: { usedAt: new Date() } });
@@ -141,12 +171,58 @@ verifyRouter.get("/verify/:token", verifyLimiter, asyncHandler(async (req, res) 
       where: { discordId_guildId: { discordId: record.discordId, guildId: record.guildId } },
       data: { status: "verified", verifiedAt: new Date() },
     });
-    res.send(successPage());
+    send(200, successPage());
     return;
   }
 
-  res.send(reviewFormPage(geoReasonMessage(geo, "verify"), config.captcha.siteKey));
+  send(200, reviewFormPage(geoReasonMessage(geo, "verify"), config.captcha.siteKey));
 }));
+
+// Receives the browser-only details from withVisitBeacon()'s script. The
+// visit id is an unguessable UUID only handed to the visitor's own page,
+// and each row can be filled in once, shortly after the visit.
+const BEACON_WINDOW_MS = 10 * 60 * 1000;
+
+function intInRange(value: unknown, max: number): number | null {
+  return typeof value === "number" && Number.isInteger(value) && value >= 0 && value <= max ? value : null;
+}
+
+function shortString(value: unknown, max: number): string | null {
+  return typeof value === "string" && value.trim() ? value.trim().slice(0, max) : null;
+}
+
+verifyRouter.post(
+  "/verify/visit/:visitId/client-info",
+  visitBeaconLimiter,
+  json({ limit: "2kb" }),
+  asyncHandler(async (req, res) => {
+    const { visitId } = req.params;
+    const body = (req.body ?? {}) as Record<string, unknown>;
+
+    const languages = Array.isArray(body.languages)
+      ? body.languages.filter((l): l is string => typeof l === "string").join(", ")
+      : body.language;
+    const pixelRatio =
+      typeof body.pixelRatio === "number" && Number.isFinite(body.pixelRatio) && body.pixelRatio > 0 && body.pixelRatio <= 10
+        ? body.pixelRatio
+        : null;
+
+    await prisma.verificationVisit.updateMany({
+      where: { id: visitId, clientInfoAt: null, createdAt: { gte: new Date(Date.now() - BEACON_WINDOW_MS) } },
+      data: {
+        browserLanguage: shortString(languages, 255),
+        screenWidth: intInRange(body.screenWidth, 20000),
+        screenHeight: intInRange(body.screenHeight, 20000),
+        viewportWidth: intInRange(body.viewportWidth, 20000),
+        viewportHeight: intInRange(body.viewportHeight, 20000),
+        pixelRatio,
+        timezone: shortString(body.timezone, 64),
+        clientInfoAt: new Date(),
+      },
+    });
+    res.status(204).end();
+  }),
+);
 
 verifyRouter.post("/verify/:token", verifyLimiter, asyncHandler(async (req, res) => {
   const { token } = req.params;

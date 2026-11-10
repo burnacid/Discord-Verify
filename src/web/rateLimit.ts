@@ -16,6 +16,18 @@ export const verifyLimiter = rateLimit({
   },
 });
 
+// One beacon per verify page load; kept separate so it doesn't eat into
+// verifyLimiter's budget.
+export const visitBeaconLimiter = rateLimit({
+  windowMs: FIFTEEN_MINUTES,
+  limit: 40,
+  standardHeaders: true,
+  legacyHeaders: false,
+  handler: (_req, res) => {
+    res.status(429).end();
+  },
+});
+
 // Invite lookups are cheap (cached), but still worth capping against abuse.
 export const joinInviteLimiter = rateLimit({
   windowMs: FIFTEEN_MINUTES,

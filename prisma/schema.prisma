@@ -80,6 +80,37 @@ model VerificationToken {
   @@index([discordId, guildId])
 }
 
+// One row per human click on a verification link (link-preview bots are
+// skipped). Unlike VerificationToken.geoIp, which only captures the first
+// visit for the cached GeoIP check, this logs every visit. The server fills
+// ip/userAgent/acceptLanguage straight away; the client-side fields
+// (language, screen, viewport, timezone) arrive via a small beacon script
+// on the rendered page (POST /verify/visit/:id/client-info), so they stay
+// null if the visitor has JavaScript turned off. No relation to
+// VerificationToken on purpose: the cleanup job deletes expired tokens,
+// and the visit history should outlive them.
+model VerificationVisit {
+  id              String    @id @default(uuid())
+  token           String
+  discordId       String
+  guildId         String
+  ip              String
+  userAgent       String?   @db.Text
+  acceptLanguage  String?   @db.VarChar(255)
+  browserLanguage String?   @db.VarChar(255)
+  screenWidth     Int?
+  screenHeight    Int?
+  viewportWidth   Int?
+  viewportHeight  Int?
+  pixelRatio      Float?
+  timezone        String?   @db.VarChar(64)
+  clientInfoAt    DateTime?
+  createdAt       DateTime  @default(now())
+
+  @@index([discordId, guildId, createdAt])
+  @@index([token])
+}
+
 model InviteLink {
   code      String   @id
   guildId   String
