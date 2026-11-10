@@ -13,6 +13,33 @@ export interface MemberRow {
   // membersRoutes.ts, not by the base per-status/search lookups.
   linkSentAt?: Date | null;
   linkExpired?: boolean | null;
+  // Latest verification-link click, if any — set by attachLastVisit().
+  lastVisit?: {
+    at: Date;
+    ip: string;
+    language: string | null;
+    screen: string | null;
+    timezone: string | null;
+    userAgent: string | null;
+  } | null;
+}
+
+function lastIpCell(row: MemberRow): string {
+  const ip = row.lastIp ? escapeHtml(row.lastIp) : "—";
+  const v = row.lastVisit;
+  if (!v) return ip;
+  const at = v.at.toISOString().slice(0, 16).replace("T", " ");
+  const details = [
+    v.ip !== row.lastIp ? `IP ${v.ip}` : null,
+    v.language,
+    v.screen,
+    v.timezone,
+  ]
+    .filter((d): d is string => !!d)
+    .map(escapeHtml)
+    .join(" · ");
+  const title = v.userAgent ? ` title="${escapeHtml(v.userAgent)}"` : "";
+  return `${ip}<div class="hint"${title}>clicked ${at}${details ? `<br />${details}` : ""}</div>`;
 }
 
 function escapeHtml(value: string): string {
@@ -39,7 +66,7 @@ function memberRow(row: MemberRow): string {
     <td>${row.username ? escapeHtml(row.username) : "<span class=\"hint\">not in server</span>"}</td>
     <td><span class="badge badge-${row.status}">${row.status}</span></td>
     <td>${row.country ?? "—"}</td>
-    <td>${row.lastIp ?? "—"}</td>
+    <td>${lastIpCell(row)}</td>
     <td>${row.verifiedAt ? row.verifiedAt.toISOString().slice(0, 16).replace("T", " ") : "—"}</td>
     <td>${linkStatusCell(row)}</td>
     <td class="actions">

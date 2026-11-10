@@ -60,6 +60,40 @@ export function detectingIpPage(token: string): string {
   );
 }
 
+// Adds a small script to a /verify page that reports details only the
+// browser knows (language list, screen/viewport size, timezone) for the
+// visit logged in GET /verify/:token. Best-effort: errors are ignored and
+// the page works the same without it.
+export function withVisitBeacon(html: string, visitId: string | null): string {
+  if (!visitId) return html;
+  const url = `/verify/visit/${encodeURIComponent(visitId)}/client-info`;
+  const script = `<script>
+      (function () {
+        try {
+          var s = window.screen || {};
+          var tz = null;
+          try { tz = Intl.DateTimeFormat().resolvedOptions().timeZone; } catch (e) {}
+          fetch(${JSON.stringify(url)}, {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            keepalive: true,
+            body: JSON.stringify({
+              language: navigator.language || null,
+              languages: navigator.languages ? Array.prototype.slice.call(navigator.languages, 0, 10) : null,
+              screenWidth: s.width || null,
+              screenHeight: s.height || null,
+              viewportWidth: window.innerWidth || null,
+              viewportHeight: window.innerHeight || null,
+              pixelRatio: window.devicePixelRatio || null,
+              timezone: tz,
+            }),
+          }).catch(function () {});
+        } catch (e) {}
+      })();
+    </script>`;
+  return html.includes("</body>") ? html.replace("</body>", `${script}\n  </body>`) : html + script;
+}
+
 export function notFoundPage(): string {
   return renderPage(
     "Page not found",
@@ -116,7 +150,7 @@ export function privacyPage(): string {
   return renderPage(
     "Privacy Policy",
     `<h1>Privacy Policy</h1>
-       <p><strong>Last updated:</strong> 2026-08-19</p>
+       <p><strong>Last updated:</strong> 2026-11-10</p>
        <p>This page explains what data GameForce ("we", "us") collects when you use this Discord
        verification service, why we collect it, and what rights you have. This service is provided
        to Discord servers operated or moderated by GameForce, and processing is subject to the EU
@@ -135,6 +169,10 @@ export function privacyPage(): string {
          decide whether you can be verified automatically or need manual review. We do not send your
          IP address to any third party for this check: country and VPN detection run against
          self-hosted, open-source data (GeoLite2 and X4BNet's VPN network lists).</li>
+         <li><strong>Browser and device details</strong> — each time you open a verification link we
+         log the IP address, your browser's user agent and language settings, your screen and window
+         size, and your time zone. This helps moderators spot shared or abused verification links and
+         judge manual-review requests. It is not sent to any third party.</li>
          <li><strong>Name and email address</strong> — only if you're routed to manual review (e.g.
          because a VPN was detected or your country isn't on the auto-verify list) and you choose to
          submit the review form. This is used solely so a moderator can review your request.</li>
