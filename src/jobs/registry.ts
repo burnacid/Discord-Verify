@@ -44,7 +44,7 @@ export const JOB_DEFINITIONS: JobDefinition[] = [
   {
     key: "roleSync",
     label: "Verified Role Sync",
-    description: "Reconciles each member's verified status with whether they hold the Verified Discord role.",
+    description: "Reconciles each member's verified status with whether they hold the Verified Discord role; deletes stored data for members who left the server.",
     run: runRoleSync,
   },
 ];

@@ -2,6 +2,7 @@ import type { Server } from "node:http";
 import { config } from "./config.js";
 import { client, startBot } from "./bot/client.js";
 import "./bot/events/guildMemberAdd.js";
+import "./bot/events/guildMemberRemove.js";
 import "./bot/events/guildCreate.js";
 import { handleGuildJoin } from "./bot/events/guildCreate.js";
 import "./bot/events/guildDelete.js";

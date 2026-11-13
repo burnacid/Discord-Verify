@@ -2,6 +2,7 @@ import { prisma } from "../db.js";
 import { client } from "../bot/client.js";
 import { getRuntimeSettings } from "../runtimeSettings.js";
 import { postAuditLog } from "../bot/auditLog.js";
+import { sweepDepartedMembers } from "../bot/memberPurge.js";
 import { runTracked } from "./jobTracking.js";
 
 // Reconciles Member.status with actual Discord role membership. Verification
@@ -11,11 +12,16 @@ import { runTracked } from "./jobTracking.js";
 // entirely. This keeps the admin portal accurate regardless of how the role
 // got assigned.
 export async function syncGuildVerifiedRole(guildId: string): Promise<void> {
-  const verifiedRoleId = getRuntimeSettings(guildId).verifiedRoleId;
-  if (!verifiedRoleId) return;
-
   const guild = await client.guilds.fetch(guildId);
   const members = await guild.members.fetch();
+
+  // Shares the full member fetch above: drops stored data for anyone who
+  // left while the bot wasn't around to see the guildMemberRemove event.
+  const purged = await sweepDepartedMembers(guildId, new Set(members.keys()));
+  if (purged) console.log(`Role sync: purged data for ${purged} departed member(s) in guild ${guildId}`);
+
+  const verifiedRoleId = getRuntimeSettings(guildId).verifiedRoleId;
+  if (!verifiedRoleId) return;
 
   const dbVerified = await prisma.member.findMany({
     where: { guildId, status: "verified" },
