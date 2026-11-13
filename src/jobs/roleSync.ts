@@ -43,6 +43,7 @@ export async function syncGuildVerifiedRole(guildId: string): Promise<void> {
         await postAuditLog(
           guildId,
           `<@${member.id}> was marked **verified** (has the Verified role but wasn't marked verified).`,
+          { category: "role_sync", targetId: member.id },
         );
       } else if (!hasRole && isDbVerified) {
         await prisma.member.update({
@@ -52,6 +53,7 @@ export async function syncGuildVerifiedRole(guildId: string): Promise<void> {
         await postAuditLog(
           guildId,
           `<@${member.id}> was marked **unverified** (lost the Verified role outside the bot).`,
+          { category: "role_sync", targetId: member.id },
         );
       }
     } catch (err) {
@@ -62,12 +64,21 @@ export async function syncGuildVerifiedRole(guildId: string): Promise<void> {
 
 export async function syncAllGuildsVerifiedRole(): Promise<void> {
   const guilds = await prisma.guild.findMany();
+  const failures: string[] = [];
   for (const guild of guilds) {
     try {
       await syncGuildVerifiedRole(guild.id);
     } catch (err) {
       console.error(`Verified role sync failed for guild ${guild.id}`, err);
+      failures.push(`${guild.name} (${guild.id}): ${err instanceof Error ? err.message : String(err)}`);
     }
+  }
+
+  // One guild failing shouldn't stop the others above, but it must still
+  // fail the run — otherwise the Scheduled Tasks page reports success while
+  // e.g. the departed-member sweep never actually ran.
+  if (failures.length) {
+    throw new Error(`Failed for ${failures.length} guild(s):\n${failures.join("\n")}`);
   }
 }
 

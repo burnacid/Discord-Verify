@@ -198,8 +198,10 @@ export function privacyPage(): string {
        <p>Verification status, GeoIP check results, verification-link visit details, and (where
        applicable) review-queue name/email are kept while you are a member of the server. When you
        leave (or are removed), this data is deleted automatically — usually immediately, and at the
-       latest within about an hour. If you rejoin later, you'll go through verification again. You
-       can also ask us to delete this data at any time (see "Your rights" below).</p>
+       latest within about an hour. If you rejoin later, you'll go through verification again. A
+       moderation audit log (your Discord ID, what happened — e.g. verified, reviewed, left the
+       server — and when; no IP or GeoIP details) is kept separately for up to 180 days. You can also
+       ask us to delete this data at any time (see "Your rights" below).</p>
 
        <h2>Your rights (GDPR)</h2>
        <p>You have the right to access, correct, or request erasure of your personal data, to

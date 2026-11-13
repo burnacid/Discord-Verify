@@ -8,6 +8,7 @@ import { isGeoAllowed, geoReasonMessage } from "../../geo/policy.js";
 import { verifyTurnstileToken } from "../../captcha/turnstile.js";
 import { assignVerifiedRole } from "../../bot/verificationService.js";
 import { createReviewEntry } from "../../bot/reviewQueue.js";
+import { postAuditLog } from "../../bot/auditLog.js";
 import { asyncHandler } from "../asyncHandler.js";
 import { verifyLimiter, visitBeaconLimiter } from "../rateLimit.js";
 import {
@@ -171,6 +172,11 @@ verifyRouter.get("/verify/:token", verifyLimiter, asyncHandler(async (req, res) 
       where: { discordId_guildId: { discordId: record.discordId, guildId: record.guildId } },
       data: { status: "verified", verifiedAt: new Date() },
     });
+    await postAuditLog(
+      record.guildId,
+      `<@${record.discordId}> **verified** automatically (country: ${geo.countryCode ?? "unknown"}, fraud score: ${geo.fraudScore}).`,
+      { category: "verification", targetId: record.discordId, discord: false },
+    );
     send(200, successPage());
     return;
   }
@@ -288,6 +294,11 @@ verifyRouter.post("/verify/:token", verifyLimiter, asyncHandler(async (req, res)
     name,
     email,
   });
+  await postAuditLog(
+    record.guildId,
+    `<@${record.discordId}> submitted a **manual review** request (reason: ${geo.isVpn ? "vpn" : "country"}, country: ${geo.countryCode ?? "unknown"}).`,
+    { category: "review", targetId: record.discordId, discord: false },
+  );
 
   res.send(reviewSubmittedPage());
 }));

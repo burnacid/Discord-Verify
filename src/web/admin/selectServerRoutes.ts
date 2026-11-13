@@ -4,6 +4,7 @@ import { asyncHandler } from "../asyncHandler.js";
 import { listAdminGuilds } from "./guildAccess.js";
 import { selectServerPage } from "../views/admin/selectServer.js";
 import { errorPage } from "../views/verifyPages.js";
+import { postAuditLog } from "../../bot/auditLog.js";
 
 export const selectServerRouter = Router();
 
@@ -70,7 +71,15 @@ selectServerRouter.post(
       res.status(403).send(errorPage("Access denied", "You're not an admin of that server."));
       return;
     }
+    const switched = req.session.guildId !== undefined;
     req.session.guildId = guildId;
+    await postAuditLog(
+      guildId,
+      switched
+        ? `<@${req.session.discordId}> switched to this server in the admin panel.`
+        : `<@${req.session.discordId}> signed in to the admin panel.`,
+      { category: "admin", actorId: req.session.discordId, discord: false },
+    );
     res.redirect("/admin");
   }),
 );
