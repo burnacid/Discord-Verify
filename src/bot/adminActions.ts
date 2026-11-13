@@ -4,6 +4,7 @@ import { client } from "./client.js";
 import { config } from "../config.js";
 import { getRuntimeSettings } from "../runtimeSettings.js";
 import { postAuditLog } from "./auditLog.js";
+import { clearExpectedRemoval, expectRemoval } from "./memberPurge.js";
 import {
   assignVerifiedRole,
   ensureMember,
@@ -134,6 +135,27 @@ export async function decideReviewEntry(
     return { ok: false, reason: "already_resolved", entryStatus: entry.status };
   }
 
+  // Kicking a denied member fires guildMemberRemove, which purges their
+  // Member/review rows (src/bot/memberPurge.ts) — possibly before the DB
+  // updates below run. Flag the removal so that purge leaves the review
+  // message to us, and use updateMany below so a row that's already gone
+  // is a no-op rather than an error.
+  if (!approve) expectRemoval(guildId, entry.discordId);
+  try {
+    return await applyReviewDecision(entry, guildId, approve, decidedById, note);
+  } finally {
+    if (!approve) clearExpectedRemoval(guildId, entry.discordId);
+  }
+}
+
+async function applyReviewDecision(
+  entry: { id: string; discordId: string; reason: string; messageId: string | null },
+  guildId: string,
+  approve: boolean,
+  decidedById: string,
+  note?: string,
+): Promise<ReviewDecisionResult> {
+  const entryId = entry.id;
   let deniedAdmin = false;
 
   if (approve) {
@@ -163,7 +185,7 @@ export async function decideReviewEntry(
 
   const reviewNote = !approve && note ? note : null;
 
-  await prisma.reviewQueueEntry.update({
+  await prisma.reviewQueueEntry.updateMany({
     where: { id: entryId },
     data: {
       status: approve ? "approved" : "denied",
@@ -173,8 +195,8 @@ export async function decideReviewEntry(
     },
   });
 
-  await prisma.member.update({
-    where: { discordId_guildId: { discordId: entry.discordId, guildId } },
+  await prisma.member.updateMany({
+    where: { discordId: entry.discordId, guildId },
     data: {
       status: approve ? "verified" : "rejected",
       verifiedAt: approve ? new Date() : null,

@@ -195,10 +195,11 @@ export function privacyPage(): string {
        </ul>
 
        <h2>How long we keep it</h2>
-       <p>We don't currently apply a fixed automatic deletion period — verification, GeoIP check
-       results, and (where applicable) review-queue name/email are kept for as long as your
-       membership record exists, so re-joins and support requests can be handled correctly. You can
-       ask us to delete this data at any time (see "Your rights" below).</p>
+       <p>Verification status, GeoIP check results, verification-link visit details, and (where
+       applicable) review-queue name/email are kept while you are a member of the server. When you
+       leave (or are removed), this data is deleted automatically — usually immediately, and at the
+       latest within about an hour. If you rejoin later, you'll go through verification again. You
+       can also ask us to delete this data at any time (see "Your rights" below).</p>
 
        <h2>Your rights (GDPR)</h2>
        <p>You have the right to access, correct, or request erasure of your personal data, to
