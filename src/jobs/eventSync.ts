@@ -1,4 +1,9 @@
-import { EmbedBuilder, GuildScheduledEventEntityType, GuildScheduledEventPrivacyLevel } from "discord.js";
+import {
+  EmbedBuilder,
+  GuildScheduledEventEntityType,
+  GuildScheduledEventPrivacyLevel,
+  RESTJSONErrorCodes,
+} from "discord.js";
 import type { Guild } from "discord.js";
 import type { EventSource, EventCategoryRule } from "@prisma/client";
 import { prisma } from "../db.js";
@@ -338,6 +343,26 @@ function resolveMentionRoleIds(
   return roleIds;
 }
 
+// True only when Discord says the thing itself is gone (deleted manually) —
+// as opposed to a timeout, 5xx, permissions or validation error, where the
+// original still exists and recreating it would leave a duplicate behind.
+function isDiscordErrorCode(err: unknown, code: number): boolean {
+  return typeof err === "object" && err !== null && "code" in err && err.code === code;
+}
+
+function isUniqueConstraintError(err: unknown): boolean {
+  return typeof err === "object" && err !== null && "code" in err && err.code === "P2002";
+}
+
+function describeError(err: unknown): string {
+  return err instanceof Error ? err.message : String(err);
+}
+
+function logSync(source: EventSource, item: { externalId: string; name?: string }, message: string): void {
+  const label = item.name ? `"${item.name}" (${item.externalId})` : item.externalId;
+  console.log(`[eventSync] [${source.name}] ${label}: ${message}`);
+}
+
 async function fetchMessageChannel(channelId: string) {
   const channel = await client.channels.fetch(channelId).catch(() => null);
   if (!channel?.isTextBased() || channel.isThread() || channel.isDMBased()) return null;
@@ -371,13 +396,20 @@ async function upsertEventMessage(
     try {
       const edited = await channel.messages.edit(existingMessageId, { content, embeds: [embed] });
       return edited.id;
-    } catch {
-      // Message was likely deleted manually — fall through and repost.
+    } catch (err) {
+      if (!isDiscordErrorCode(err, RESTJSONErrorCodes.UnknownMessage)) {
+        // Transient/other failure — the message still exists, so keep it
+        // rather than posting a duplicate. The next sync retries the edit.
+        logSync(source, item, `message edit failed, keeping existing message ${existingMessageId}: ${describeError(err)}`);
+        return existingMessageId;
+      }
+      logSync(source, item, `message ${existingMessageId} no longer exists, reposting`);
     }
   }
 
   try {
     const posted = await channel.send({ content, embeds: [embed] });
+    logSync(source, item, `posted message ${posted.id}`);
     return posted.id;
   } catch (err) {
     console.error(`Failed to post event message for "${item.name}"`, err);
@@ -419,7 +451,7 @@ async function clearTrackedEvents(source: EventSource): Promise<number> {
   const guild = await client.guilds.fetch(source.guildId);
   await Promise.all(
     rows.map(async (row) => {
-      await guild.scheduledEvents.delete(row.discordEventId).catch(() => {});
+      if (row.discordEventId) await guild.scheduledEvents.delete(row.discordEventId).catch(() => {});
       await deleteEventMessage(source, row.messageId);
     }),
   );
@@ -446,12 +478,15 @@ export function clearAllEventsForSource(source: EventSource): Promise<number> {
 
 export async function syncEventSource(source: EventSource): Promise<void> {
   const allItems = await fetchNormalizedItems(source);
-  const items = allItems.filter(
+  const filtered = allItems.filter(
     (item) =>
       matchesNameFilter(item.name, source.nameFilter, source.nameFilterMode) &&
       matchesCategoryFilter(item.categorySlugs, source.categoryFilter, source.categoryFilterMode),
   );
-  const itemsById = new Map(items.map((item) => [item.externalId, item]));
+  // Dedupe by externalId so an API that lists the same item twice can't
+  // make us create it twice within one run.
+  const itemsById = new Map(filtered.map((item) => [item.externalId, item]));
+  const items = [...itemsById.values()];
 
   const guild = await client.guilds.fetch(source.guildId);
   const tracked = await prisma.eventSourceItem.findMany({ where: { sourceId: source.id } });
@@ -484,7 +519,8 @@ export async function syncEventSource(source: EventSource): Promise<void> {
 
       // Item disappeared from the API entirely (or no longer matches the
       // name filter) — treat as cancelled.
-      await guild.scheduledEvents.delete(row.discordEventId).catch(() => {});
+      logSync(source, row, "no longer in the feed, deleting Discord event and message");
+      if (row.discordEventId) await guild.scheduledEvents.delete(row.discordEventId).catch(() => {});
       await deleteEventMessage(source, row.messageId);
       await prisma.eventSourceItem.delete({ where: { id: row.id } }).catch(() => {});
       continue;
@@ -494,21 +530,37 @@ export async function syncEventSource(source: EventSource): Promise<void> {
 
     // Always attempt the edit rather than skipping when nothing in the API
     // changed — this doubles as the check for "did someone delete this
-    // event manually?". If the edit fails (most likely because the event
-    // no longer exists), recreate it fresh so it's never left permanently
-    // missing while still tracked/active in the API.
+    // event manually?". Only when Discord says the event is gone do we
+    // recreate it; any other failure (timeout, 5xx, validation) leaves the
+    // existing event alone, since recreating then would leave a duplicate.
+    // An empty discordEventId means a previous run claimed the row but
+    // never finished creating the event (e.g. crashed mid-way).
     let discordEventId = row.discordEventId;
-    try {
-      await guild.scheduledEvents.edit(discordEventId, {
-        name: buildName(item),
-        description: buildDescription(item),
-        scheduledStartTime: item.startUtc,
-        scheduledEndTime: endTime,
-        entityMetadata: { location: buildLocation(item) },
-      });
-    } catch {
+    let needsCreate = discordEventId === "";
+    if (!needsCreate) {
+      try {
+        await guild.scheduledEvents.edit(discordEventId, {
+          name: buildName(item),
+          description: buildDescription(item),
+          // Discord rejects a start time in the past, so stop sending it
+          // once the event has started (it can't meaningfully move anyway).
+          ...(item.startUtc.getTime() > now ? { scheduledStartTime: item.startUtc } : {}),
+          scheduledEndTime: endTime,
+          entityMetadata: { location: buildLocation(item) },
+        });
+      } catch (err) {
+        if (isDiscordErrorCode(err, RESTJSONErrorCodes.UnknownGuildScheduledEvent)) {
+          logSync(source, item, `Discord event ${discordEventId} no longer exists, recreating`);
+          needsCreate = true;
+        } else {
+          logSync(source, item, `edit of Discord event ${discordEventId} failed, keeping it: ${describeError(err)}`);
+        }
+      }
+    }
+    if (needsCreate && item.startUtc.getTime() > now) {
       try {
         discordEventId = await createScheduledEvent(guild, item, endTime);
+        logSync(source, item, `created Discord event ${discordEventId} (recreate)`);
       } catch (err) {
         console.error(`Failed to recreate Discord event for "${item.name}" (${item.externalId})`, err);
       }
@@ -533,23 +585,51 @@ export async function syncEventSource(source: EventSource): Promise<void> {
 
     const endTime = item.endUtc ?? new Date(item.startUtc.getTime() + source.durationMinutes * 60 * 1000);
 
+    // Claim the item in the DB *before* touching Discord. The
+    // @@unique([sourceId, externalId]) constraint makes this the single
+    // gate: if anything else (an overlapping run, another instance) already
+    // claimed it, the insert fails and we post nothing. Previously the
+    // Discord event/message were posted first and the insert failed after,
+    // leaving untracked duplicates that were never cleaned up.
+    let rowId: string;
     try {
-      const discordEventId = await createScheduledEvent(guild, item, endTime);
-      const messageId = await upsertEventMessage(source, null, item, resolveMentionRoleIds(source, rules, item));
-      await prisma.eventSourceItem.create({
+      const claimed = await prisma.eventSourceItem.create({
         data: {
           guildId: source.guildId,
           sourceId: source.id,
           externalId: item.externalId,
-          discordEventId,
+          discordEventId: "",
           startUtc: item.startUtc,
           endUtc: endTime,
-          messageId,
           apiUpdatedAt: item.updatedAt,
         },
       });
+      rowId = claimed.id;
+    } catch (err) {
+      if (isUniqueConstraintError(err)) {
+        logSync(source, item, "already claimed by another run, skipping");
+      } else {
+        console.error(`Failed to claim event row for "${item.name}" (${item.externalId})`, err);
+      }
+      continue;
+    }
+
+    let discordEventId: string;
+    try {
+      discordEventId = await createScheduledEvent(guild, item, endTime);
+      logSync(source, item, `created Discord event ${discordEventId}`);
     } catch (err) {
       console.error(`Failed to create Discord event for "${item.name}" (${item.externalId})`, err);
+      // Release the claim so the next sync retries cleanly.
+      await prisma.eventSourceItem.delete({ where: { id: rowId } }).catch(() => {});
+      continue;
+    }
+
+    try {
+      const messageId = await upsertEventMessage(source, null, item, resolveMentionRoleIds(source, rules, item));
+      await prisma.eventSourceItem.update({ where: { id: rowId }, data: { discordEventId, messageId } });
+    } catch (err) {
+      console.error(`Failed to finish tracking event for "${item.name}" (${item.externalId})`, err);
     }
   }
 
@@ -564,7 +644,26 @@ function eventSyncErrorMessage(err: unknown): string {
   return message.length > 500 ? message.slice(0, 500) + "…" : message;
 }
 
-export async function syncAllEventSources(): Promise<void> {
+// Only one sync may run at a time in this process. The startup run, the
+// interval, the admin "Check sources" button and "Run now" all funnel
+// through here; a caller arriving while a run is in progress just awaits
+// that run instead of starting an overlapping one (overlaps were the main
+// source of duplicate events — a full sync can take minutes because of
+// Discord rate limits).
+let inFlightSync: Promise<void> | null = null;
+
+export function syncAllEventSources(): Promise<void> {
+  if (inFlightSync) {
+    console.log("[eventSync] sync already running, joining the in-progress run");
+    return inFlightSync;
+  }
+  inFlightSync = doSyncAllEventSources().finally(() => {
+    inFlightSync = null;
+  });
+  return inFlightSync;
+}
+
+async function doSyncAllEventSources(): Promise<void> {
   const sources = await prisma.eventSource.findMany({ where: { enabled: true } });
   for (const source of sources) {
     try {
