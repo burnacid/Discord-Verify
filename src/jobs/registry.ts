@@ -20,7 +20,7 @@ export const JOB_DEFINITIONS: JobDefinition[] = [
   {
     key: "cleanup",
     label: "Cleanup",
-    description: "Deletes expired verification tokens and invite links; sweeps empty Join-to-Create channels.",
+    description: "Deletes expired verification tokens and invite links, prunes old audit log entries; sweeps empty Join-to-Create channels.",
     run: runCleanup,
   },
   {

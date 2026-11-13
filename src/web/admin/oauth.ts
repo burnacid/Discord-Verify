@@ -5,6 +5,7 @@ import { asyncHandler } from "../asyncHandler.js";
 import { errorPage } from "../views/verifyPages.js";
 import { listAdminGuilds } from "./guildAccess.js";
 import { noAdminGuildsMessage } from "./selectServerRoutes.js";
+import { postAuditLog } from "../../bot/auditLog.js";
 
 export const oauthRouter = Router();
 
@@ -84,6 +85,13 @@ oauthRouter.get(
     // Skip the picker when there's only one candidate — most admins manage
     // exactly one server.
     req.session.guildId = adminGuilds.length === 1 ? adminGuilds[0].id : undefined;
+    if (req.session.guildId) {
+      await postAuditLog(req.session.guildId, `<@${user.id}> signed in to the admin panel.`, {
+        category: "admin",
+        actorId: user.id,
+        discord: false,
+      });
+    }
 
     res.redirect(req.session.guildId ? "/admin" : "/admin/select-server");
   }),

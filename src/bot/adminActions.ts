@@ -45,7 +45,11 @@ export async function verifyMember(
   });
 
   await sendDirectMessage(discordId, "You've been manually verified! You can now post in the server.");
-  await postAuditLog(guildId, `<@${discordId}> was manually **verified** by <@${decidedById}> via ${via}.`);
+  await postAuditLog(guildId, `<@${discordId}> was manually **verified** by <@${decidedById}> via ${via}.`, {
+    category: "verification",
+    actorId: decidedById,
+    targetId: discordId,
+  });
 
   return { ok: true };
 }
@@ -74,7 +78,11 @@ export async function unverifyMember(
     data: { status: "unverified", verifiedAt: null },
   });
 
-  await postAuditLog(guildId, `<@${discordId}> was manually **unverified** by <@${decidedById}> via ${via}.`);
+  await postAuditLog(guildId, `<@${discordId}> was manually **unverified** by <@${decidedById}> via ${via}.`, {
+    category: "verification",
+    actorId: decidedById,
+    targetId: discordId,
+  });
 
   return { ok: true };
 }
@@ -106,7 +114,11 @@ export async function sendVerificationLink(
     return { ok: false, reason: "Couldn't DM this member — they may have DMs disabled." };
   }
 
-  await postAuditLog(guildId, `A verification link was sent to <@${discordId}> by <@${requestedById}> via ${via}.`);
+  await postAuditLog(guildId, `A verification link was sent to <@${discordId}> by <@${requestedById}> via ${via}.`, {
+    category: "verification",
+    actorId: requestedById,
+    targetId: discordId,
+  });
 
   return { ok: true };
 }
@@ -213,12 +225,14 @@ async function applyReviewDecision(
     await postAuditLog(
       guildId,
       `<@${entry.discordId}> was **approved** by <@${decidedById}> (reason: ${entry.reason}).`,
+      { category: "review", actorId: decidedById, targetId: entry.discordId },
     );
   } else {
     await postAuditLog(
       guildId,
       `<@${entry.discordId}> was **denied** by <@${decidedById}> (reason: ${entry.reason})` +
         `${deniedAdmin ? " — not kicked (admin)" : " and removed from the server"}.${noteSuffix}`,
+      { category: "review", actorId: decidedById, targetId: entry.discordId },
     );
   }
 

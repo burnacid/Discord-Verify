@@ -52,6 +52,7 @@ export function renderAdminPage(
           <div class="nav-group">
             ${navLink("/admin", "Dashboard", ICONS.dashboard)}
             ${navLink("/admin/members", "Members", ICONS.users)}
+            ${navLink("/admin/audit-log", "Audit Log", ICONS.fileText)}
           </div>
           ${
             adminModules.length > 0

@@ -2,6 +2,7 @@ import { EmbedBuilder } from "discord.js";
 import { prisma } from "../db.js";
 import { client } from "./client.js";
 import { getRuntimeSettings } from "../runtimeSettings.js";
+import { postAuditLog } from "./auditLog.js";
 
 // Removals the bot itself is about to cause (currently: kicking a member
 // whose manual review was denied — see decideReviewEntry in adminActions.ts).
@@ -34,10 +35,22 @@ const CHUNK_SIZE = 500;
  * mod-review channel; those messages are updated to say the member left
  * first, so a mod doesn't click a button that can only answer "not found".
  */
-export async function purgeMemberData(guildId: string, discordIds: string[]): Promise<number> {
+export async function purgeMemberData(
+  guildId: string,
+  discordIds: string[],
+  reason: "left" | "sweep" = "left",
+): Promise<number> {
   let purged = 0;
   for (let i = 0; i < discordIds.length; i += CHUNK_SIZE) {
     const chunk = discordIds.slice(i, i + CHUNK_SIZE);
+
+    // Captured before deletion so only users we actually held data for get an
+    // audit entry (a leave by someone who never interacted with the bot is
+    // not worth logging).
+    const known = await prisma.member.findMany({
+      where: { guildId, discordId: { in: chunk } },
+      select: { discordId: true, status: true },
+    });
 
     const pendingReviews = await prisma.reviewQueueEntry.findMany({
       where: { guildId, discordId: { in: chunk }, status: "pending", messageId: { not: null } },
@@ -55,6 +68,15 @@ export async function purgeMemberData(guildId: string, discordIds: string[]): Pr
       prisma.member.deleteMany({ where: { guildId, discordId: { in: chunk } } }),
     ]);
     purged += members.count;
+
+    const how = reason === "left" ? "left the server" : "is no longer in the server (found by the periodic sweep)";
+    for (const m of known) {
+      await postAuditLog(guildId, `<@${m.discordId}> ${how} — stored data deleted (was **${m.status}**).`, {
+        category: "member",
+        targetId: m.discordId,
+        discord: false,
+      });
+    }
   }
   return purged;
 }
@@ -83,7 +105,7 @@ export async function sweepDepartedMembers(guildId: string, presentIds: Set<stri
   }
   if (departed.size === 0) return 0;
 
-  return purgeMemberData(guildId, [...departed]);
+  return purgeMemberData(guildId, [...departed], "sweep");
 }
 
 async function markReviewMessageMemberLeft(guildId: string, messageId: string): Promise<void> {

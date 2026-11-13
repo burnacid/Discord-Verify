@@ -350,3 +350,26 @@ model ReviewQueueEntry {
   @@index([discordId, guildId])
   @@index([guildId, status])
 }
+
+// One row per audit-worthy action — verification decisions, review outcomes,
+// role-sync corrections, departed-member data deletion, admin sign-ins.
+// Written by postAuditLog() (src/bot/auditLog.ts), which also mirrors most
+// entries to the guild's Discord audit-log channel when one is configured;
+// this table is the complete record shown on the admin "Audit Log" page.
+// Pruned after AUDIT_LOG_RETENTION_DAYS by the cleanup job.
+model AuditLogEntry {
+  id        String   @id @default(uuid())
+  guildId   String
+  category  String   @db.VarChar(32) // see AuditCategory in src/bot/auditLog.ts
+  // Discord-flavoured markdown, same text as the Discord channel embed:
+  // <@id> mentions and **bold** — rendered to HTML on the admin page.
+  message   String   @db.Text
+  actorId   String? // who did it (null = the system / the member themselves)
+  targetId  String? // whom it was about
+  createdAt DateTime @default(now())
+
+  @@index([guildId, createdAt])
+  @@index([guildId, category, createdAt])
+  @@index([guildId, targetId])
+  @@index([guildId, actorId])
+}

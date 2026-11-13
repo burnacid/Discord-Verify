@@ -11,6 +11,7 @@ import { oauthRouter } from "./admin/oauth.js";
 import { selectServerRouter } from "./admin/selectServerRoutes.js";
 import { dashboardRouter } from "./admin/dashboardRoutes.js";
 import { membersRouter } from "./admin/membersRoutes.js";
+import { auditLogRouter } from "./admin/auditLogRoutes.js";
 import "./admin/modules.js";
 import { adminModules } from "./admin/moduleRegistry.js";
 import { errorPage, notFoundPage } from "./views/verifyPages.js";
@@ -38,6 +39,7 @@ export function createApp() {
   app.use(selectServerRouter);
   app.use(dashboardRouter);
   app.use(membersRouter);
+  app.use(auditLogRouter);
   for (const mod of adminModules) app.use(mod.router);
 
   app.use((req: Request, res: Response) => {

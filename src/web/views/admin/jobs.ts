@@ -3,6 +3,14 @@ import type { AdminUser, FlashKind } from "./layout.js";
 import type { JobDefinition } from "../../../jobs/registry.js";
 import type { JobRunStatus } from "../../../jobs/jobTracking.js";
 
+function escapeHtml(value: string): string {
+  return value
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;")
+    .replace(/"/g, "&quot;");
+}
+
 function formatDate(value: Date | null | undefined): string {
   return value ? value.toISOString().slice(0, 16).replace("T", " ") + " UTC" : "never";
 }
@@ -23,7 +31,7 @@ export function jobsPage(
     .map((job) => {
       const status = statuses.get(job.key);
       const errorRow = status?.lastError
-        ? `<div class="hint" style="color: var(--color-error, #d33)">Last error: ${status.lastError}</div>`
+        ? `<div class="hint" style="color: var(--color-error, #d33)">Last error: ${escapeHtml(status.lastError)}</div>`
         : "";
       return `
         <tr>
