@@ -2,7 +2,7 @@ import Parser from "rss-parser";
 import type { RssFeed } from "@prisma/client";
 import { prisma } from "../db.js";
 import { client } from "../bot/client.js";
-import { renderTemplate, DEFAULT_RSS_TEMPLATE } from "./rssTemplate.js";
+import { renderMessages, DEFAULT_RSS_TEMPLATE } from "./rssTemplate.js";
 import { runTracked } from "./jobTracking.js";
 
 const parser = new Parser();
@@ -45,13 +45,22 @@ export async function pollRssFeeds(): Promise<void> {
   }
 }
 
-export async function fetchFeedItems(feedUrl: string): Promise<Parser.Item[]> {
-  const parsed = await parser.parseURL(feedUrl);
+// WPML and Polylang both select a WordPress feed's language via the `lang`
+// query var, so this overrides any `lang` already in the stored URL.
+export function feedFetchUrl(feed: Pick<RssFeed, "feedUrl" | "language">): string {
+  if (!feed.language) return feed.feedUrl;
+  const url = new URL(feed.feedUrl);
+  url.searchParams.set("lang", feed.language);
+  return url.toString();
+}
+
+export async function fetchFeedItems(feed: Pick<RssFeed, "feedUrl" | "language">): Promise<Parser.Item[]> {
+  const parsed = await parser.parseURL(feedFetchUrl(feed));
   return parsed.items ?? [];
 }
 
 async function pollOneFeed(feed: RssFeed, defaultTemplate: string): Promise<void> {
-  const items = await fetchFeedItems(feed.feedUrl);
+  const items = await fetchFeedItems(feed);
 
   // First-ever poll for a newly-added feed: seed lastGuid without posting,
   // so adding a feed doesn't backfill-spam the channel with its whole history.
@@ -65,7 +74,7 @@ async function pollOneFeed(feed: RssFeed, defaultTemplate: string): Promise<void
   }
 
   const idx = items.findIndex((it) => itemGuid(it) === feed.lastGuid);
-  // idx === -1: lastGuid fell off the feed (or feedUrl changed). Resync to
+  // idx === -1: lastGuid fell off the feed (or feedUrl/language changed). Resync to
   // newest without posting rather than risk treating the whole feed as new.
   const newItems = idx === -1 ? [] : items.slice(0, idx).reverse();
 
@@ -89,8 +98,10 @@ function itemGuid(item: Parser.Item): string {
 export async function postItem(feed: RssFeed, item: Parser.Item, defaultTemplate: string): Promise<void> {
   const channel = await client.channels.fetch(feed.channelId);
   if (!channel?.isTextBased() || channel.isThread() || channel.isDMBased()) return;
-  const content = renderTemplate(feed.template ?? defaultTemplate, feed, item);
-  await channel.send({ content });
+  // Sent one at a time so a multi-part post arrives in order.
+  for (const content of renderMessages(feed.template ?? defaultTemplate, feed, item)) {
+    await channel.send({ content });
+  }
 }
 
 export function runOnce(): Promise<void> {

@@ -170,6 +170,9 @@ model RssFeed {
   guildId       String
   name          String
   feedUrl       String
+  // WPML/Polylang language code (e.g. "nl", "en"), sent as ?lang=xx when
+  // fetching the feed. Null = whatever the site serves by default.
+  language      String?
   channelId     String
   enabled       Boolean   @default(true)
   template      String?   @db.Text
