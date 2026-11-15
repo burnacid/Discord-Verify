@@ -1,4 +1,5 @@
 import Parser from "rss-parser";
+import { ChannelType } from "discord.js";
 import type { RssFeed } from "@prisma/client";
 import { prisma } from "../db.js";
 import { client } from "../bot/client.js";
@@ -98,9 +99,19 @@ function itemGuid(item: Parser.Item): string {
 export async function postItem(feed: RssFeed, item: Parser.Item, defaultTemplate: string): Promise<void> {
   const channel = await client.channels.fetch(feed.channelId);
   if (!channel?.isTextBased() || channel.isThread() || channel.isDMBased()) return;
+  const publish = feed.autoPublish && channel.type === ChannelType.GuildAnnouncement;
   // Sent one at a time so a multi-part post arrives in order.
   for (const content of renderMessages(feed.template ?? defaultTemplate, feed, item)) {
-    await channel.send({ content });
+    const message = await channel.send({ content });
+    if (publish) {
+      // Not awaited: Discord allows 10 publishes per channel per hour, and on
+      // a rate limit discord.js waits it out — that must not stall the poller.
+      // A failure here also mustn't fail the poll, or lastGuid wouldn't
+      // advance and the item would be posted again next cycle.
+      message.crosspost().catch((err) => {
+        console.error(`RSS auto-publish failed for feed "${feed.name}" (${feed.id})`, err);
+      });
+    }
   }
 }
 
