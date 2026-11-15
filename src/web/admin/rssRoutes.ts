@@ -1,6 +1,6 @@
 import { Router } from "express";
 import { prisma } from "../../db.js";
-import { fetchGuildTextChannels } from "../../bot/channelLookup.js";
+import { fetchGuildPostableChannels } from "../../bot/channelLookup.js";
 import { pollRssFeeds, fetchFeedItems, postItem, getDefaultTemplate } from "../../jobs/rssPoller.js";
 import { asyncHandler } from "../asyncHandler.js";
 import { requireAdmin } from "./session.js";
@@ -32,7 +32,7 @@ rssRouter.get(
     const flashKind = parseFlashKind(req.query.flashKind);
     const [feeds, channels, defaultTemplate] = await Promise.all([
       prisma.rssFeed.findMany({ where: { guildId }, orderBy: { createdAt: "asc" } }),
-      fetchGuildTextChannels(guildId),
+      fetchGuildPostableChannels(guildId),
       getDefaultTemplate(guildId),
     ]);
     res.send(rssPage(adminUser(req), feeds, channels, defaultTemplate, flash, flashKind));
@@ -47,6 +47,7 @@ rssRouter.post(
     const channelId = typeof req.body?.channelId === "string" ? req.body.channelId.trim() : "";
     const template = parseTemplate(req.body?.template);
     const language = parseLanguage(req.body?.language);
+    const autoPublish = req.body?.autoPublish === "on";
 
     if (!name || !isValidUrl(feedUrl) || !channelId) {
       res.status(400).send(errorPage("Invalid feed", "Name, a valid feed URL, and a channel are required."));
@@ -57,7 +58,7 @@ rssRouter.post(
       return;
     }
 
-    await prisma.rssFeed.create({ data: { guildId: req.session.guildId!, name, feedUrl, language, channelId, template } });
+    await prisma.rssFeed.create({ data: { guildId: req.session.guildId!, name, feedUrl, language, channelId, autoPublish, template } });
     res.redirect(`/admin/rss?${flashQuery("Feed added.")}`);
   }),
 );
@@ -70,6 +71,7 @@ rssRouter.post(
     const channelId = typeof req.body?.channelId === "string" ? req.body.channelId.trim() : "";
     const template = parseTemplate(req.body?.template);
     const language = parseLanguage(req.body?.language);
+    const autoPublish = req.body?.autoPublish === "on";
 
     if (!name || !isValidUrl(feedUrl) || !channelId) {
       res.status(400).send(errorPage("Invalid feed", "Name, a valid feed URL, and a channel are required."));
@@ -89,7 +91,7 @@ rssRouter.post(
     // Changing feedUrl or language may invalidate lastGuid against the new
     // feed's item list; the poller's idx===-1 path resyncs without posting on the next
     // cycle, so no special-casing is needed here.
-    await prisma.rssFeed.update({ where: { id: existing.id }, data: { name, feedUrl, language, channelId, template } });
+    await prisma.rssFeed.update({ where: { id: existing.id }, data: { name, feedUrl, language, channelId, autoPublish, template } });
     res.redirect(`/admin/rss?${flashQuery("Feed updated.")}`);
   }),
 );

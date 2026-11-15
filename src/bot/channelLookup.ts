@@ -1,9 +1,19 @@
 import { ChannelType } from "discord.js";
 import { client } from "./client.js";
 
+export type ChannelKind = "text" | "announcement" | "voice";
+
+function channelKind(type: ChannelType): ChannelKind {
+  if (type === ChannelType.GuildAnnouncement) return "announcement";
+  if (type === ChannelType.GuildVoice) return "voice";
+  return "text";
+}
+
 interface CategorizedChannel {
   id: string;
   name: string;
+  // Drives the icon shown next to the channel in admin pickers.
+  kind: ChannelKind;
   // Name of the category this channel sits in, or null for a channel with
   // no category — matches what a member sees in Discord's own channel list.
   category: string | null;
@@ -21,7 +31,7 @@ async function fetchAllChannels(guildId: string) {
 // grouped together in Discord across an admin dropdown.
 async function fetchGuildChannels(
   guildId: string,
-  type: ChannelType.GuildText | ChannelType.GuildVoice,
+  types: ChannelType[],
 ): Promise<CategorizedChannel[]> {
   const channels = await fetchAllChannels(guildId);
 
@@ -33,10 +43,11 @@ async function fetchGuildChannels(
   }
 
   return channels
-    .filter((c) => c?.type === type)
+    .filter((c) => c !== null && types.includes(c.type))
     .map((c) => ({
       id: c!.id,
       name: c!.name,
+      kind: channelKind(c!.type),
       position: c!.position,
       category: c!.parentId ? (categories.get(c!.parentId) ?? null) : null,
     }))
@@ -45,19 +56,25 @@ async function fetchGuildChannels(
       const categoryPositionB = b.category?.position ?? -1;
       return categoryPositionA !== categoryPositionB ? categoryPositionA - categoryPositionB : a.position - b.position;
     })
-    .map(({ id, name, category }) => ({ id, name, category: category?.name ?? null }));
+    .map(({ id, name, kind, category }) => ({ id, name, kind, category: category?.name ?? null }));
 }
 
 export type GuildTextChannel = CategorizedChannel;
 
 export function fetchGuildTextChannels(guildId: string): Promise<GuildTextChannel[]> {
-  return fetchGuildChannels(guildId, ChannelType.GuildText);
+  return fetchGuildChannels(guildId, [ChannelType.GuildText]);
+}
+
+// Text channels plus announcement channels — for features that only post
+// messages (e.g. RSS), where an announcement channel is a natural target.
+export function fetchGuildPostableChannels(guildId: string): Promise<GuildTextChannel[]> {
+  return fetchGuildChannels(guildId, [ChannelType.GuildText, ChannelType.GuildAnnouncement]);
 }
 
 export type GuildVoiceChannel = CategorizedChannel;
 
 export function fetchGuildVoiceChannels(guildId: string): Promise<GuildVoiceChannel[]> {
-  return fetchGuildChannels(guildId, ChannelType.GuildVoice);
+  return fetchGuildChannels(guildId, [ChannelType.GuildVoice]);
 }
 
 export interface GuildRole {

@@ -83,8 +83,23 @@ document.querySelectorAll('select[name="provider"]').forEach((select) => {
 // only ever renders one plain <select>, no separate data format to keep in
 // sync. The select stays in the DOM (hidden, tabindex -1) as the real form
 // field and as the fallback if this script fails to load.
-const VOICE_ICON_SVG =
-  '<svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><polygon points="11 5 6 9 2 9 2 15 6 15 11 19 11 5"/><path d="M19.07 4.93a10 10 0 0 1 0 14.14"/><path d="M15.54 8.46a5 5 0 0 1 0 7.07"/></svg>';
+const channelIconSvg = (paths) =>
+  `<svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">${paths}</svg>`;
+// Keyed by each <option>'s data-kind (see channelOptions.ts), matching the
+// icons Discord itself uses for these channel types.
+const CHANNEL_ICON_SVGS = {
+  text: channelIconSvg(
+    '<line x1="4" y1="9" x2="20" y2="9"/><line x1="4" y1="15" x2="20" y2="15"/><line x1="10" y1="3" x2="8" y2="21"/><line x1="16" y1="3" x2="14" y2="21"/>',
+  ),
+  announcement: channelIconSvg('<path d="M3 11l18-5v12L3 14v-3z"/><path d="M11.6 16.8a3 3 0 1 1-5.8-1.6"/>'),
+  voice: channelIconSvg(
+    '<polygon points="11 5 6 9 2 9 2 15 6 15 11 19 11 5"/><path d="M19.07 4.93a10 10 0 0 1 0 14.14"/><path d="M15.54 8.46a5 5 0 0 1 0 7.07"/>',
+  ),
+};
+const channelIcon = (optionEl) => CHANNEL_ICON_SVGS[optionEl?.dataset.kind] ?? CHANNEL_ICON_SVGS.text;
+// Options carry a "#" in their text for the no-JS <select> fallback; the
+// icon already shows the type here, so drop it from the displayed label.
+const channelLabel = (optionEl) => optionEl.textContent.replace(/^#/, "");
 const CHEVRON_SVG =
   '<svg class="channel-picker-chevron" viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><polyline points="6 9 12 15 18 9"/></svg>';
 const SEARCH_ICON_SVG =
@@ -105,7 +120,8 @@ function buildChannelPicker(select) {
   trigger.className = "channel-picker-trigger";
   trigger.setAttribute("aria-haspopup", "listbox");
   trigger.setAttribute("aria-expanded", "false");
-  trigger.innerHTML = `${VOICE_ICON_SVG}<span class="channel-picker-value"></span>${CHEVRON_SVG}`;
+  trigger.innerHTML = `<span class="channel-picker-icon"></span><span class="channel-picker-value"></span>${CHEVRON_SVG}`;
+  const iconEl = trigger.querySelector(".channel-picker-icon");
   const valueEl = trigger.querySelector(".channel-picker-value");
 
   // Re-point the field's own <label for> at the trigger button so clicking
@@ -142,11 +158,11 @@ function buildChannelPicker(select) {
     button.type = "button";
     button.className = "channel-picker-option";
     button.setAttribute("role", "option");
-    button.innerHTML = `${VOICE_ICON_SVG}<span></span>`;
-    button.querySelector("span").textContent = optionEl.textContent;
-    button.addEventListener("click", () => choose(optionEl.value, optionEl.textContent, button));
+    button.innerHTML = `${channelIcon(optionEl)}<span></span>`;
+    button.querySelector("span").textContent = channelLabel(optionEl);
+    button.addEventListener("click", () => choose(optionEl, button));
     list.appendChild(button);
-    entries.push({ button, value: optionEl.value, label: optionEl.textContent.toLowerCase(), groupLabelEl });
+    entries.push({ button, value: optionEl.value, label: channelLabel(optionEl).toLowerCase(), groupLabelEl });
   }
 
   for (const node of Array.from(select.children)) {
@@ -167,10 +183,11 @@ function buildChannelPicker(select) {
   emptyState.hidden = true;
   list.appendChild(emptyState);
 
-  function choose(value, label, buttonEl) {
-    select.value = value;
+  function choose(optionEl, buttonEl) {
+    select.value = optionEl.value;
     select.dispatchEvent(new Event("change", { bubbles: true }));
-    valueEl.textContent = label;
+    iconEl.innerHTML = channelIcon(optionEl);
+    valueEl.textContent = channelLabel(optionEl);
     valueEl.classList.remove("placeholder");
     for (const entry of entries) entry.button.classList.toggle("active", entry.button === buttonEl);
     closeMenu();
@@ -252,8 +269,9 @@ function buildChannelPicker(select) {
   // Initialize the trigger label/active state from whatever the select
   // already has selected (its first option, absent an explicit default).
   const selected = select.options[select.selectedIndex];
+  iconEl.innerHTML = channelIcon(selected);
   if (selected) {
-    valueEl.textContent = selected.textContent;
+    valueEl.textContent = channelLabel(selected);
     const match = entries.find((entry) => entry.value === selected.value);
     if (match) match.button.classList.add("active");
   } else {

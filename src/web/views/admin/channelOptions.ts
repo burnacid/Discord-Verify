@@ -28,7 +28,7 @@ export function channelOptions(channels: GuildTextChannel[], selectedId?: string
   }
 
   const option = (c: GuildTextChannel) =>
-    `<option value="${c.id}" ${c.id === selectedId ? "selected" : ""}>${namePrefix}${escapeHtml(c.name)}</option>`;
+    `<option value="${c.id}" data-kind="${c.kind}" ${c.id === selectedId ? "selected" : ""}>${namePrefix}${escapeHtml(c.name)}</option>`;
 
   const plainOptions = uncategorized.map(option).join("");
   const optgroups = [...groups.entries()]

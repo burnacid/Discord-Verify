@@ -175,6 +175,9 @@ model RssFeed {
   language      String?
   channelId     String
   enabled       Boolean   @default(true)
+  // Publish (crosspost) each post to following servers when channelId is an
+  // announcement channel. Ignored for regular text channels.
+  autoPublish   Boolean   @default(false)
   template      String?   @db.Text
   lastGuid      String?
   lastPostedAt  DateTime?

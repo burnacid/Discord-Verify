@@ -15,6 +15,9 @@ function escapeHtml(value: string): string {
 const PLACEHOLDER_HINT =
   "Placeholders: <code>{{title}}</code> <code>{{link}}</code> <code>{{description}}</code> (short excerpt) <code>{{content}}</code> (full post text; long posts continue in follow-up messages, up to 5) <code>{{author}}</code> <code>{{date}}</code> <code>{{feedName}}</code>";
 
+const AUTO_PUBLISH_HINT =
+  "Only applies to announcement channels: each post is published so servers following the channel receive it. The bot needs the <strong>Manage Messages</strong> permission there, and Discord allows 10 publishes per channel per hour (a post split over several messages uses one per message).";
+
 const LANGUAGE_HINT =
   "WordPress (WPML/Polylang) language code, sent as <code>?lang=xx</code> when fetching the feed. Leave blank for the site's default language.";
 
@@ -36,7 +39,7 @@ function feedRow(feed: RssFeed, channels: GuildTextChannel[]): string {
     <td>${escapeHtml(feed.name)}</td>
     <td><code>${escapeHtml(feed.feedUrl)}</code></td>
     <td>${feed.language ? `<code>${escapeHtml(feed.language)}</code>` : `<span class="hint">default</span>`}</td>
-    <td>${channelLabel(feed.channelId, channels)}</td>
+    <td>${channelLabel(feed.channelId, channels)}${feed.autoPublish ? ` <span class="hint">· auto-publish</span>` : ""}</td>
     <td>${statusBadge}</td>
     <td>${lastPosted}</td>
     <td class="actions">
@@ -66,6 +69,12 @@ function feedRow(feed: RssFeed, channels: GuildTextChannel[]): string {
 
           <label for="channelId-${feed.id}">Channel</label>
           <select id="channelId-${feed.id}" name="channelId" data-channel-picker>${channelOptions(channels, feed.channelId, "#")}</select>
+
+          <div class="checkbox-row">
+            <input type="checkbox" id="autoPublish-${feed.id}" name="autoPublish" ${feed.autoPublish ? "checked" : ""} />
+            <label for="autoPublish-${feed.id}">Auto-publish to following servers</label>
+          </div>
+          <div class="hint">${AUTO_PUBLISH_HINT}</div>
 
           <label for="template-${feed.id}">Post template (leave blank to use the default template)</label>
           <textarea id="template-${feed.id}" name="template" placeholder="Uses the default template below">${escapeHtml(feed.template ?? "")}</textarea>
@@ -131,6 +140,12 @@ export function rssPage(
         <label for="channelId">Channel</label>
         <select id="channelId" name="channelId" required data-channel-picker>${channelOptions(channels, undefined, "#")}</select>
         <div class="hint">New items from this feed will be posted here. The feed's current items are not backfilled — only items published after adding it are posted.</div>
+
+        <div class="checkbox-row">
+          <input type="checkbox" id="autoPublish" name="autoPublish" />
+          <label for="autoPublish">Auto-publish to following servers</label>
+        </div>
+        <div class="hint">${AUTO_PUBLISH_HINT}</div>
 
         <label for="template">Post template (optional)</label>
         <textarea id="template" name="template" placeholder="Uses the default template above"></textarea>
