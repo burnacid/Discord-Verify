@@ -13,7 +13,10 @@ function escapeHtml(value: string): string {
 }
 
 const PLACEHOLDER_HINT =
-  "Placeholders: <code>{{title}}</code> <code>{{link}}</code> <code>{{description}}</code> <code>{{author}}</code> <code>{{date}}</code> <code>{{feedName}}</code>";
+  "Placeholders: <code>{{title}}</code> <code>{{link}}</code> <code>{{description}}</code> (short excerpt) <code>{{content}}</code> (full post text; long posts continue in follow-up messages, up to 5) <code>{{author}}</code> <code>{{date}}</code> <code>{{feedName}}</code>";
+
+const LANGUAGE_HINT =
+  "WordPress (WPML/Polylang) language code, sent as <code>?lang=xx</code> when fetching the feed. Leave blank for the site's default language.";
 
 function channelLabel(channelId: string, channels: GuildTextChannel[]): string {
   const channel = channels.find((c) => c.id === channelId);
@@ -32,6 +35,7 @@ function feedRow(feed: RssFeed, channels: GuildTextChannel[]): string {
   return `<tr>
     <td>${escapeHtml(feed.name)}</td>
     <td><code>${escapeHtml(feed.feedUrl)}</code></td>
+    <td>${feed.language ? `<code>${escapeHtml(feed.language)}</code>` : `<span class="hint">default</span>`}</td>
     <td>${channelLabel(feed.channelId, channels)}</td>
     <td>${statusBadge}</td>
     <td>${lastPosted}</td>
@@ -46,7 +50,7 @@ function feedRow(feed: RssFeed, channels: GuildTextChannel[]): string {
     </td>
   </tr>
   <tr>
-    <td colspan="6">
+    <td colspan="7">
       <details>
         <summary class="hint">Edit</summary>
         <form method="post" action="/admin/rss/${feed.id}/edit" class="mt-sm">
@@ -55,6 +59,10 @@ function feedRow(feed: RssFeed, channels: GuildTextChannel[]): string {
 
           <label for="feedUrl-${feed.id}">Feed URL</label>
           <input type="text" id="feedUrl-${feed.id}" name="feedUrl" value="${escapeHtml(feed.feedUrl)}" />
+
+          <label for="language-${feed.id}">Language (optional)</label>
+          <input type="text" id="language-${feed.id}" name="language" value="${escapeHtml(feed.language ?? "")}" placeholder="e.g. nl, en" />
+          <div class="hint">${LANGUAGE_HINT}</div>
 
           <label for="channelId-${feed.id}">Channel</label>
           <select id="channelId-${feed.id}" name="channelId" data-channel-picker>${channelOptions(channels, feed.channelId, "#")}</select>
@@ -101,7 +109,7 @@ export function rssPage(
         ? `<div class="card empty">No RSS feeds configured yet.</div>`
         : `<div class="table-wrap"><table>
           <thead>
-            <tr><th>Name</th><th>Feed URL</th><th>Channel</th><th>Status</th><th>Last posted</th><th></th></tr>
+            <tr><th>Name</th><th>Feed URL</th><th>Language</th><th>Channel</th><th>Status</th><th>Last posted</th><th></th></tr>
           </thead>
           <tbody>${feeds.map((f) => feedRow(f, channels)).join("")}</tbody>
         </table></div>`
@@ -115,6 +123,10 @@ export function rssPage(
 
         <label for="feedUrl">Feed URL</label>
         <input type="text" id="feedUrl" name="feedUrl" placeholder="https://example.com/feed.xml" required />
+
+        <label for="language">Language (optional)</label>
+        <input type="text" id="language" name="language" placeholder="e.g. nl, en" />
+        <div class="hint">${LANGUAGE_HINT}</div>
 
         <label for="channelId">Channel</label>
         <select id="channelId" name="channelId" required data-channel-picker>${channelOptions(channels, undefined, "#")}</select>

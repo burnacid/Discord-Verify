@@ -46,13 +46,18 @@ rssRouter.post(
     const feedUrl = typeof req.body?.feedUrl === "string" ? req.body.feedUrl.trim() : "";
     const channelId = typeof req.body?.channelId === "string" ? req.body.channelId.trim() : "";
     const template = parseTemplate(req.body?.template);
+    const language = parseLanguage(req.body?.language);
 
     if (!name || !isValidUrl(feedUrl) || !channelId) {
       res.status(400).send(errorPage("Invalid feed", "Name, a valid feed URL, and a channel are required."));
       return;
     }
+    if (language === undefined) {
+      res.status(400).send(errorPage("Invalid language", "Use a language code like nl, en or pt-br, or leave it blank."));
+      return;
+    }
 
-    await prisma.rssFeed.create({ data: { guildId: req.session.guildId!, name, feedUrl, channelId, template } });
+    await prisma.rssFeed.create({ data: { guildId: req.session.guildId!, name, feedUrl, language, channelId, template } });
     res.redirect(`/admin/rss?${flashQuery("Feed added.")}`);
   }),
 );
@@ -64,9 +69,14 @@ rssRouter.post(
     const feedUrl = typeof req.body?.feedUrl === "string" ? req.body.feedUrl.trim() : "";
     const channelId = typeof req.body?.channelId === "string" ? req.body.channelId.trim() : "";
     const template = parseTemplate(req.body?.template);
+    const language = parseLanguage(req.body?.language);
 
     if (!name || !isValidUrl(feedUrl) || !channelId) {
       res.status(400).send(errorPage("Invalid feed", "Name, a valid feed URL, and a channel are required."));
+      return;
+    }
+    if (language === undefined) {
+      res.status(400).send(errorPage("Invalid language", "Use a language code like nl, en or pt-br, or leave it blank."));
       return;
     }
 
@@ -76,10 +86,10 @@ rssRouter.post(
       return;
     }
 
-    // Changing feedUrl may invalidate lastGuid against the new feed's item
-    // list; the poller's idx===-1 path resyncs without posting on the next
+    // Changing feedUrl or language may invalidate lastGuid against the new
+    // feed's item list; the poller's idx===-1 path resyncs without posting on the next
     // cycle, so no special-casing is needed here.
-    await prisma.rssFeed.update({ where: { id: existing.id }, data: { name, feedUrl, channelId, template } });
+    await prisma.rssFeed.update({ where: { id: existing.id }, data: { name, feedUrl, language, channelId, template } });
     res.redirect(`/admin/rss?${flashQuery("Feed updated.")}`);
   }),
 );
@@ -108,7 +118,7 @@ rssRouter.get(
     const flash = typeof req.query.flash === "string" ? req.query.flash : undefined;
     const flashKind = parseFlashKind(req.query.flashKind);
     const [items, defaultTemplate] = await Promise.all([
-      fetchFeedItems(feed.feedUrl),
+      fetchFeedItems(feed),
       getDefaultTemplate(feed.guildId),
     ]);
     res.send(rssTestPage(adminUser(req), feed, items, defaultTemplate, flash, flashKind));
@@ -124,7 +134,7 @@ rssRouter.post(
       return;
     }
     const itemIndex = Number(req.body?.itemIndex);
-    const items = await fetchFeedItems(feed.feedUrl);
+    const items = await fetchFeedItems(feed);
     const item = Number.isInteger(itemIndex) ? items[itemIndex] : undefined;
     if (!item) {
       res.redirect(`/admin/rss/${feed.id}/test?${flashQuery("Item not found — the feed may have changed.", "error")}`);
@@ -185,6 +195,13 @@ rssRouter.post(
 function parseTemplate(value: unknown): string | null {
   const trimmed = typeof value === "string" ? value.trim() : "";
   return trimmed === "" ? null : trimmed;
+}
+
+// Blank → null (site default). Invalid → undefined so the caller can reject it.
+function parseLanguage(value: unknown): string | null | undefined {
+  const trimmed = typeof value === "string" ? value.trim().toLowerCase() : "";
+  if (trimmed === "") return null;
+  return /^[a-z]{2,3}(-[a-z0-9]{2,8})?$/.test(trimmed) ? trimmed : undefined;
 }
 
 function isValidUrl(value: string): boolean {

@@ -301,11 +301,13 @@ processes globally, not per-directory.
 | `pm2 unstartup` | Undo `pm2 startup` |
 | `pm2 resurrect` | Restore the process list from the last `pm2 save` |
 
-Typical redeploy after pulling code changes:
+Typical redeploy:
 
 ```bash
 cd /home/gameforce/domains/discord.gameforce.nl/Discord-Verify
-npm install        # only needed if dependencies changed
+git pull
+npm ci             # not `npm install` — ci never rewrites package-lock.json, which would block the next `git pull`
+npx prisma db push # applies schema changes (no-op if there are none)
 npm run build
 pm2 restart discord-verify
 pm2 logs discord-verify --lines 50 --nostream   # confirm it came back up cleanly
